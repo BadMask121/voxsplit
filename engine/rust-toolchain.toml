@@ -1,0 +1,6 @@
+[toolchain]
+# ort 2.0.0-rc.15 requires Rust >= 1.92.
+channel = "1.92"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin"]
