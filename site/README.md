@@ -1,4 +1,4 @@
-# voxsplit.triplejmusic.art
+# voxsplit.jeffrey.build
 
 The download page, the install script and the installer downloads, as one
 Cloudflare Worker (`voxsplit-site`) on the `triplejmusic.art` zone.

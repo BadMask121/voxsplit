@@ -161,7 +161,7 @@ final class ProcessManager {
     func start() {
         guard let input, !phase.isActive else { return }
         guard let location = EngineLocator.locate() else {
-            phase = .failed("VoxSplit's engine isn't installed. Reinstall VoxSplit from voxsplit.triplejmusic.art.")
+            phase = .failed("VoxSplit's engine isn't installed. Reinstall VoxSplit from voxsplit.jeffrey.build.")
             return
         }
 

@@ -1,13 +1,27 @@
-// voxsplit.triplejmusic.art: fills the current release into the page and the
-// install script, and serves installers from R2 (with resumable range requests).
+// voxsplit.jeffrey.build: fills the current release into the page and the install
+// script, serves installers from R2 (with resumable range requests), and redirects
+// the site's first home, voxsplit.triplejmusic.art.
 import release from "../release.json" with { type: "json" };
 
 export const pkgPath = (r = release) => `/download/${r.file}`;
 export const megabytes = (bytes) => `${Math.round(bytes / 1_000_000)} MB`;
 
+/** The site moved here from voxsplit.triplejmusic.art, which now redirects. */
+export const HOME = "voxsplit.jeffrey.build";
+
+/** Old-host URLs go to the same path on the new host (curl -L follows it, so copied
+    install commands keep working). */
+export function movedTo(url) {
+  return url.hostname === "voxsplit.triplejmusic.art" ? `https://${HOME}${url.pathname}${url.search}` : null;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const moved = movedTo(url);
+    if (moved) {
+      return Response.redirect(moved, 301);
+    }
     const { pathname } = url;
 
     if (pathname === "/download/latest") {

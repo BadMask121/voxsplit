@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish a release to https://voxsplit.triplejmusic.art: build the .pkg, record it in
+# Publish a release to https://voxsplit.jeffrey.build: build the .pkg, record it in
 # site/release.json, upload it to R2, deploy the site, then check the live download.
 # Needs `wrangler login` (Cloudflare account that owns triplejmusic.art).
 #   --skip-build   publish the existing dist/VoxSplit-<version>.pkg
@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SITE="$ROOT/site"
 WRANGLER="$SITE/node_modules/.bin/wrangler"
 BUCKET=voxsplit-downloads
-ORIGIN=https://voxsplit.triplejmusic.art
+ORIGIN=https://voxsplit.jeffrey.build
 die() { echo "error: $*" >&2; exit 1; }
 
 [[ -x "$WRANGLER" ]] || (cd "$SITE" && npm install --silent)

@@ -55,11 +55,11 @@ EngineLocation locateEngine()
             if (! c.modelsDir.getChildFile (juce::String (name) + ".onnx").existsAsFile()
                 || ! c.modelsDir.getChildFile (juce::String (name) + ".json").existsAsFile())
                 loc.problem = "VoxSplit's model files are missing from " + c.modelsDir.getFullPathName()
-                            + ". Reinstall VoxSplit from voxsplit.triplejmusic.art.";
+                            + ". Reinstall VoxSplit from voxsplit.jeffrey.build.";
         return loc;
     }
 
     EngineLocation missing;
-    missing.problem = "VoxSplit's engine isn't installed. Reinstall VoxSplit from voxsplit.triplejmusic.art.";
+    missing.problem = "VoxSplit's engine isn't installed. Reinstall VoxSplit from voxsplit.jeffrey.build.";
     return missing;
 }

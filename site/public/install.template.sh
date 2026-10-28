@@ -1,12 +1,12 @@
 #!/bin/bash
 # VoxSplit __VERSION__ installer for macOS (Apple silicon, macOS 14+).
 #
-#   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash
+#   curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash
 #       The app, the FL Studio plugin (VST3 + AU) and the `voxsplit` command
 #       (asks for your password).
-#   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --cli
+#   curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash -s -- --cli
 #       Only the `voxsplit` command, in your home folder (no password).
-#   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --uninstall
+#   curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash -s -- --uninstall
 #       Remove VoxSplit (your separated stems in ~/Music/VoxSplit are kept).
 #
 # Source: https://github.com/BadMask121/voxsplit
@@ -72,7 +72,7 @@ install_all() {
   ${BOLD}FL Studio${RESET}  Options → Manage plugins → Find more plugins, then put VoxSplit on a mixer insert
   ${BOLD}Terminal${RESET}   voxsplit separate song.mp3
 
-  Setup help: https://voxsplit.triplejmusic.art/#fl-studio
+  Setup help: https://voxsplit.jeffrey.build/#fl-studio
 EOF
 }
 
@@ -82,7 +82,12 @@ install_cli() {
   local bin="$HOME/.local/bin"
   step "Installing the voxsplit command"
   pkgutil --expand-full "$tmp/VoxSplit.pkg" "$tmp/expanded" >/dev/null
-  local payload="$tmp/expanded/VoxSplit-component.pkg/Payload/Library/Application Support/VoxSplit"
+  # The engine and models are in the core part (0.1.1+); 0.1.0 had a single part.
+  local payload part
+  for part in VoxSplit-core.pkg VoxSplit-component.pkg; do
+    payload="$tmp/expanded/$part/Payload/Library/Application Support/VoxSplit"
+    [[ -x "$payload/voxsplit-engine" ]] && break
+  done
   [[ -x "$payload/voxsplit-engine" ]] || fail "the package is missing the engine."
   rm -rf "$dest/voxsplit-engine" "$dest/models"
   mkdir -p "$dest" "$bin"
@@ -108,7 +113,8 @@ install_cli() {
 uninstall() {
   step "Removing VoxSplit"
   local user_dir="$HOME/Library/Application Support/VoxSplit"
-  rm -rf "$user_dir" "$HOME/Library/Caches/com.voxsplit.engine"
+  rm -rf "$user_dir" "$HOME/Library/Caches/com.voxsplit.engine" \
+    "$HOME/Library/Audio/Plug-Ins/VST3/VoxSplit.vst3" "$HOME/Library/Audio/Plug-Ins/Components/VoxSplit.component"
   if [[ -L "$HOME/.local/bin/voxsplit" ]]; then rm -f "$HOME/.local/bin/voxsplit"; fi
 
   local system=(/Applications/VoxSplit.app /Library/Audio/Plug-Ins/VST3/VoxSplit.vst3
@@ -131,7 +137,7 @@ usage() {
   cat <<'USAGE'
 VoxSplit installer (Apple silicon, macOS 14+)
 
-  curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash
+  curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash
       The app, the FL Studio plugin (VST3 + AU) and the `voxsplit` command
       (asks for your password).
   ... | bash -s -- --cli

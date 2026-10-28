@@ -6,11 +6,11 @@ are thin frontends over one Rust engine that runs ONNX models on the Apple Neura
 Engine/GPU via CoreML. Nothing leaves your machine, and end users install nothing
 else: no Python, no runtimes.
 
-**Download:** https://voxsplit.triplejmusic.art (Apple silicon, macOS 14+), or from Terminal:
+**Download:** https://voxsplit.jeffrey.build (Apple silicon, macOS 14+), or from Terminal:
 
 ```bash
-curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash               # app + plugins + voxsplit command
-curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --cli   # only the command, no password
+curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash               # app + plugins + voxsplit command
+curl -fsSL https://voxsplit.jeffrey.build/install.sh | bash -s -- --cli   # only the command, no password
 ```
 
 ```
@@ -43,7 +43,7 @@ plugin/    JUCE 9 plugin (VST3, AU, Standalone): drop zone, Separate, preview, d
 macos/     SwiftUI app (SwiftPM): the same flow; VoxSplitKit holds the async Process() runner
 models/    ONNX weights (downloaded, gitignored) + committed sidecar JSON hyperparameters
 installer/ .pkg pieces: distribution.xml, welcome/conclusion pages, postinstall
-site/      voxsplit.triplejmusic.art: Cloudflare Worker + static page + install.sh; installers in R2
+site/      voxsplit.jeffrey.build: Cloudflare Worker + static page + install.sh; installers in R2
 assets/    the VoxSplit mark (icon.svg → macos/AppIcon.icns via scripts/make-icon.sh)
 scripts/   fetch-models, build-engine, build-plugin, build-app, build-pkg, release, embed, sign, test-all
 docs/      architecture, bundle layout, engine protocol, measured performance

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /download/
 
-Sitemap: https://voxsplit.triplejmusic.art/sitemap.xml
+Sitemap: https://voxsplit.jeffrey.build/sitemap.xml
