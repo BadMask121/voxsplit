@@ -133,15 +133,8 @@ void DropZone::paint (juce::Graphics& g)
     juce::Path glyph;
     if (hasFile && drag == DragState::none)
     {
-        // A small waveform for "loaded".
-        const float bars[] = { 0.35f, 0.7f, 1.0f, 0.55f, 0.85f, 0.4f, 0.6f };
-        for (int i = 0; i < 7; ++i)
-        {
-            const auto h = 22.0f * bars[i];
-            glyph.addRoundedRectangle (c.x - 21.0f + (float) i * 6.0f, c.y - h / 2.0f, 3.0f, h, 1.5f);
-        }
-        g.setColour (colours::text.withMultipliedAlpha (enabledAlpha));
-        g.fillPath (glyph);
+        // "Loaded": the VoxSplit mark's split waveform, as on the app icon.
+        vox::drawMark (g, juce::Rectangle<float> (46.0f, 36.0f).withCentre ({ c.x, c.y - 4.0f }), false, enabledAlpha);
     }
     else
     {

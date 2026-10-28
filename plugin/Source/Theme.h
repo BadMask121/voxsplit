@@ -96,6 +96,11 @@ private:
 };
 
 juce::Font font (float height, bool bold = false);
+
+/** The VoxSplit mark (assets/icon.svg): a waveform split along its centre line,
+    lead above, backing below. With `tile`, on its dark rounded square, exactly as
+    the app icon; without, just the bars. Fitted and centred in `area`. */
+void drawMark (juce::Graphics&, juce::Rectangle<float> area, bool tile, float alpha = 1.0f);
 juce::Font monoFont (float height);
 
 /** File types the engine can decode. */

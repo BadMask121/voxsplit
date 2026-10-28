@@ -385,13 +385,22 @@ struct DropZoneView: View {
     var body: some View {
         Button(action: onChoose) {
             VStack(spacing: 10) {
-                Image(systemName: file == nil || targeted ? "arrow.down.to.line" : "waveform")
-                    .font(.system(size: 24, weight: .regular))
-                    .foregroundStyle(file == nil || targeted ? Theme.textDim : Theme.text)
-                    .contentTransition(.symbolEffect(.replace))
-                    .offset(y: targeted && !reduceMotion ? 3 : 0)
-                    .frame(height: 30)
-                    .padding(.bottom, 2)
+                ZStack {
+                    if file == nil || targeted {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.system(size: 24, weight: .regular))
+                            .foregroundStyle(Theme.textDim)
+                    } else {
+                        // "Loaded": the VoxSplit mark's split waveform, as on the app icon.
+                        BrandMark(tile: false)
+                            .frame(width: 40, height: 32)
+                            .opacity(isEnabled ? 1 : 0.45)
+                    }
+                }
+                .transition(.opacity)
+                .offset(y: targeted && !reduceMotion ? 3 : 0)
+                .frame(height: 32)
+                .padding(.bottom, 2)
                 Text(headline)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.text)
@@ -625,4 +634,46 @@ func took(_ seconds: Double) -> String {
     let s = max(1, Int(seconds.rounded()))
     if s < 60 { return "Took \(s) s" }
     return s % 60 == 0 ? "Took \(s / 60) min" : "Took \(s / 60) min \(s % 60) s"
+}
+
+// MARK: - Brand mark
+
+/// The VoxSplit mark (assets/icon.svg): a waveform split along its centre line, lead above,
+/// backing below. With `tile`, on its dark rounded square, exactly as the app icon; without,
+/// just the bars. Drawn from the SVG's own numbers so the icon, the site and the UI match.
+struct BrandMark: View {
+    var tile = true
+
+    var body: some View {
+        Canvas { context, size in
+            let box = tile ? CGRect(x: 100, y: 100, width: 824, height: 824)
+                           : CGRect(x: 194, y: 244, width: 636, height: 518)
+            let scale = min(size.width / box.width, size.height / box.height)
+            let origin = CGPoint(x: size.width / 2 - box.midX * scale, y: size.height / 2 - box.midY * scale)
+            func map(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+                CGRect(x: origin.x + x * scale, y: origin.y + y * scale, width: w * scale, height: h * scale)
+            }
+            func vertical(_ top: UInt32, _ bottom: UInt32, _ r: CGRect) -> GraphicsContext.Shading {
+                .linearGradient(Gradient(colors: [Color(hex: top), Color(hex: bottom)]),
+                                startPoint: CGPoint(x: r.midX, y: r.minY), endPoint: CGPoint(x: r.midX, y: r.maxY))
+            }
+
+            if tile {
+                let r = map(100, 100, 824, 824)
+                context.fill(Path(roundedRect: r, cornerRadius: 185 * scale), with: vertical(0x2C2C34, 0x121215, r))
+                context.stroke(Path(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 185 * scale),
+                               with: .color(.white.opacity(0.09)), lineWidth: 1)
+            }
+            let heights: [CGFloat] = [80, 150, 220, 270, 300, 250, 190, 130, 80]
+            for (i, h) in heights.enumerated() {
+                let x = 194 + CGFloat(i) * 74
+                let lead = map(x, 560 - 16 - h, 44, h)
+                context.fill(Path(roundedRect: lead, cornerRadius: lead.width / 2), with: vertical(0xFFB892, 0xFF7A45, lead))
+                // Backing is quieter: 62% of the lead's height, as on the icon.
+                let backing = map(x, 560 + 16, 44, (h * 0.62).rounded())
+                context.fill(Path(roundedRect: backing, cornerRadius: backing.width / 2), with: vertical(0x6C8CFF, 0xAFC0FF, backing))
+            }
+        }
+        .accessibilityHidden(true)
+    }
 }

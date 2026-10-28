@@ -30,7 +30,7 @@ enum Theme {
 }
 
 extension Color {
-    init(hex: UInt32) {
+    nonisolated init(hex: UInt32) {
         self.init(
             .sRGB,
             red: Double((hex >> 16) & 0xFF) / 255,

@@ -439,6 +439,8 @@ void VoxSplitEditor::paint (juce::Graphics& g)
     g.fillAll (colours::background);
 
     auto header = headerArea;
+    vox::drawMark (g, header.removeFromLeft (40).toFloat().withSizeKeepingCentre (38.0f, 38.0f), true);
+    header.removeFromLeft (12);
     auto titleRow = header.removeFromTop (22);
     g.setColour (colours::text);
     g.setFont (font (18.0f, true));

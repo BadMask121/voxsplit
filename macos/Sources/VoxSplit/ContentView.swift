@@ -85,13 +85,17 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("VoxSplit")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Theme.text)
-                Text("Split vocals, right on your Mac")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.textDim)
+            HStack(spacing: 12) {
+                BrandMark()
+                    .frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("VoxSplit")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                    Text("Split vocals, right on your Mac")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textDim)
+                }
             }
             Spacer()
             DeviceChip(device: manager.device)
