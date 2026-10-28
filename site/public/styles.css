@@ -423,6 +423,11 @@ main > .chip-strip { padding-top: 28px; }
 }
 .hint b { color: var(--text); }
 
+/* "Works with": the same chips as the keyword strip, left-aligned in the plugin section. */
+.label.works-label { margin: 28px 0 10px !important; }
+.keyword-chips.daws { justify-content: flex-start; }
+.daws-note { margin: 12px 0 0; font-size: 14px; color: var(--text-dim); }
+
 /* Feature points in the FL Studio section: a check in a stem colour per line. */
 .fl-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
 .fl-points li {
