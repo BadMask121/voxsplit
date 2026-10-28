@@ -55,8 +55,9 @@ mkdir -p "$PKGS"
 # that `wrangler r2 object put` can upload.
 COMMON=(--version "$VERSION" --install-location / --compression latest --min-os-version 14.0)
 
-# Install bundles exactly where the payload says. By default the installer "relocates"
-# a bundle onto any copy with the same id elsewhere on disk (a dev build, a Downloads copy).
+# Install bundles exactly where the payload says, and always replace what's there. By
+# default the installer "relocates" a bundle onto any copy with the same id elsewhere on
+# disk (a dev build, a Downloads copy), and skips a bundle whose installed version is newer.
 component_pkg() { # <part> [extra pkgbuild args...]
   local part="$1"; shift
   local plist="$WORK/$part-components.plist"
@@ -64,8 +65,10 @@ component_pkg() { # <part> [extra pkgbuild args...]
   local count
   count="$(/usr/libexec/PlistBuddy -c 'Print' "$plist" | grep -c 'RootRelativeBundlePath' || true)"
   for ((i = 0; i < count; i++)); do
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$plist" 2>/dev/null \
-      || /usr/libexec/PlistBuddy -c "Add :$i:BundleIsRelocatable bool false" "$plist"
+    for key in BundleIsRelocatable BundleIsVersionChecked; do
+      /usr/libexec/PlistBuddy -c "Set :$i:$key false" "$plist" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Add :$i:$key bool false" "$plist"
+    done
   done
   pkgbuild --root "$ROOTS/$part" --component-plist "$plist" --identifier "com.voxsplit.pkg.$part" \
     "${COMMON[@]}" "$@" "$PKGS/VoxSplit-$part.pkg" >/dev/null
@@ -81,6 +84,14 @@ sed "s/__VERSION__/$VERSION/g" "$ROOT/installer/distribution.xml" > "$WORK/distr
 OUT="$WORK/VoxSplit-$VERSION.pkg"
 productbuild --distribution "$WORK/distribution.xml" --resources "$ROOT/installer/resources" \
   --package-path "$PKGS" "$OUT" >/dev/null
+
+# site/public/install.template.sh (--cli) copies the engine and models out of this exact
+# path; fail here rather than in someone's Terminal.
+CHECK="$WORK/check"
+pkgutil --expand-full "$OUT" "$CHECK" >/dev/null
+[[ -x "$CHECK/VoxSplit-core.pkg/Payload/Library/Application Support/VoxSplit/voxsplit-engine" ]] \
+  || die "the engine isn't where install.sh --cli looks for it"
+rm -rf "$CHECK"
 
 mkdir -p "$ROOT/dist"
 cp -f "$OUT" "$ROOT/dist/"

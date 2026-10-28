@@ -1,0 +1,19 @@
+#!/bin/bash
+# Runs as root before the plugins are installed. Removes every older VoxSplit plugin so
+# hosts like FL Studio see exactly one: the copies in /Library, and the ones in the
+# signed-in user's own ~/Library/Audio/Plug-Ins (earlier builds installed there, and
+# hosts scan both folders, so leftovers show up as a second VoxSplit).
+remove() { if [[ -e "$1" ]]; then rm -rf "$1"; fi; }
+
+remove "/Library/Audio/Plug-Ins/VST3/VoxSplit.vst3"
+remove "/Library/Audio/Plug-Ins/Components/VoxSplit.component"
+
+user="$(stat -f %Su /dev/console 2>/dev/null)"
+if [[ -n "$user" && "$user" != root ]]; then
+  home="$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [[ -n "$home" && -d "$home/Library/Audio/Plug-Ins" ]]; then
+    remove "$home/Library/Audio/Plug-Ins/VST3/VoxSplit.vst3"
+    remove "$home/Library/Audio/Plug-Ins/Components/VoxSplit.component"
+  fi
+fi
+exit 0
