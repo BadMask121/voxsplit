@@ -14,7 +14,16 @@ start with `-` can't be misread as a flag.
 voxsplit-engine separate --input=<audio file> [options]
 voxsplit-engine estimate --input=<audio file> [--models-dir=<dir>] [--device=…]
 voxsplit-engine probe
+voxsplit-engine play <results folder | stem files…> [--mute=<stem>…]
 ```
+
+The same binary is the `voxsplit` command people run by hand (the installer links
+`/usr/local/bin/voxsplit` to it). For them the file can also be positional
+(`voxsplit separate song.mp3`), and `--format` picks the output: `auto` (default)
+prints readable progress to stderr and the written files to stdout when stdout is a
+terminal, and these JSON Lines when it is a pipe, which is always the case for the
+frontends. `human` and `json` force one or the other. `separate --reveal` opens the
+output folder when done; `play` sums a run's stems and plays them with `afplay`.
 
 `estimate` reads the file's length from its header, without decoding it, and
 prints one `estimate` event: the expected seconds for each quality with one

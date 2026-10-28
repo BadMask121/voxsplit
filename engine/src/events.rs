@@ -3,10 +3,19 @@
 //! flushed immediately so frontends see progress in real time.
 
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Readable terminal output instead of JSON Lines (see `human`). Off by
+/// default: frontends read stdout through a pipe and always get JSON.
+static HUMAN: AtomicBool = AtomicBool::new(false);
+
+pub fn set_human(human: bool) {
+    HUMAN.store(human, Ordering::Relaxed);
+}
 const MAX_MESSAGE: usize = 300;
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -133,6 +142,10 @@ pub fn to_line(event: &Event) -> String {
 }
 
 pub fn emit(event: &Event) {
+    if HUMAN.load(Ordering::Relaxed) {
+        crate::human::render(event);
+        return;
+    }
     let line = to_line(event);
     let mut out = std::io::stdout().lock();
     // A closed pipe (frontend gone) must not turn into a panic mid-run.

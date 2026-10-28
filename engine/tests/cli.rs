@@ -197,3 +197,40 @@ fn vocal_remover_writes_vocals_and_instrumental() {
     assert!(out_dir.join("vocals.wav").is_file() && out_dir.join("instrumental.wav").is_file());
     assert!(!out_dir.join("lead_vocals.wav").exists());
 }
+
+#[test]
+fn positional_file_works_like_input() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = engine(&[
+        "separate",
+        dir.path().join("missing.wav").to_str().unwrap(),
+        "--models-dir=/nonexistent",
+    ]);
+    // Gets past argument parsing to the model check (exit 4), not a usage error (exit 2).
+    assert_eq!(
+        out.status.code(),
+        Some(4),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = engine(&["separate"]);
+    assert_eq!(out.status.code(), Some(2));
+}
+
+#[test]
+fn play_with_nothing_to_play_is_a_usage_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = engine(&["play", dir.path().to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let (code, message) = last_error(&out);
+    assert_eq!(code, "bad_args");
+    assert!(message.contains("nothing to play"), "{message}");
+}
+
+#[test]
+fn format_human_prints_no_json() {
+    let out = engine(&["probe", "--format=human"]);
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "human output goes to stderr");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("VoxSplit"));
+}

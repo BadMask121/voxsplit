@@ -1,15 +1,20 @@
-//! `voxsplit-engine` — the CLI both frontends spawn. See docs/02-engine-protocol.md.
+//! `voxsplit` — the command-line tool, and the engine both frontends spawn
+//! (as `voxsplit-engine`). See docs/02-engine-protocol.md.
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use voxsplit::audio::{self, BitDepth};
 use voxsplit::cancel::Cancel;
 use voxsplit::device::{self, Device};
 use voxsplit::error::EngineError;
+use voxsplit::events::Stem;
 use voxsplit::events::{self, ErrorCode, Event};
+use voxsplit::human;
 use voxsplit::model::ModelConfig;
 use voxsplit::pipeline::{self, Job, Tool};
+use voxsplit::preview;
 use voxsplit::separator::SeparateOptions;
 use voxsplit::timing::TimingStore;
 
@@ -19,30 +24,78 @@ const KARAOKE_BEST: &str = "BS_Roformer_Karaoke.onnx";
 
 #[derive(Parser)]
 #[command(
-    name = "voxsplit-engine",
+    name = "voxsplit",
     version,
-    about = "Offline lead/backing vocal separation"
+    about = "Split lead and backing vocals on this Mac, offline",
+    after_help = "Examples:\n  voxsplit separate song.mp3\n  voxsplit separate song.wav --tool=vocal-remover --reveal\n  voxsplit separate song.flac --quality=fast --passes=3 --out-dir=stems\n  voxsplit play ~/Music/VoxSplit/song\n  voxsplit play ~/Music/VoxSplit/song --mute backing\n  voxsplit estimate song.mp3"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Command,
+    /// Output: readable progress in a terminal, JSON Lines (one event per line)
+    /// when piped. See docs/02-engine-protocol.md.
+    #[arg(long, value_enum, default_value_t = Format::Auto, global = true)]
+    format: Format,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Format {
+    Auto,
+    Human,
+    Json,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Split an audio file into lead_vocals.wav and backing_vocals.wav.
+    /// Split a song into lead_vocals.wav + backing_vocals.wav
+    /// (or vocals.wav + instrumental.wav with --tool=vocal-remover).
     Separate(SeparateArgs),
     /// Report which hardware accelerators this build can use.
     Probe,
     /// Estimate how long `separate` will take for a file, at both qualities.
     Estimate(EstimateArgs),
+    /// Play a run's stems together (macOS), like the apps' preview.
+    Play(PlayArgs),
 }
 
 #[derive(Args)]
+struct PlayArgs {
+    /// A results folder (e.g. ~/Music/VoxSplit/<song>), or the stem files to play together.
+    #[arg(value_name = "FOLDER|FILES", required = true, num_args = 1..)]
+    paths: Vec<PathBuf>,
+    /// Leave a stem out, e.g. --mute backing to hear the lead alone. Repeatable.
+    #[arg(long, value_enum)]
+    mute: Vec<StemArg>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum StemArg {
+    Lead,
+    Backing,
+    Vocals,
+    Instrumental,
+}
+
+impl StemArg {
+    fn stem(self) -> Stem {
+        match self {
+            Self::Lead => Stem::Lead,
+            Self::Backing => Stem::Backing,
+            Self::Vocals => Stem::Vocals,
+            Self::Instrumental => Stem::Instrumental,
+        }
+    }
+}
+
+#[derive(Args)]
+#[command(group(ArgGroup::new("source").required(true).args(["file", "input"])))]
 struct SeparateArgs {
     /// Audio file to separate (wav, aiff, flac, mp3, m4a).
-    #[arg(long)]
-    input: PathBuf,
+    #[arg(value_name = "FILE")]
+    file: Option<PathBuf>,
+    /// Same as FILE.
+    #[arg(long, value_name = "FILE")]
+    input: Option<PathBuf>,
     /// lead-backing: lead_vocals.wav + backing_vocals.wav.
     /// vocal-remover: vocals.wav + instrumental.wav.
     #[arg(long, value_enum, default_value_t = ToolArg::LeadBacking)]
@@ -92,12 +145,20 @@ struct SeparateArgs {
     no_denoise: bool,
     #[arg(long, value_enum, default_value_t = BitDepthArg::F32)]
     bit_depth: BitDepthArg,
+    /// Open the output folder in Finder when done.
+    #[arg(long)]
+    reveal: bool,
 }
 
 #[derive(Args)]
+#[command(group(ArgGroup::new("source").required(true).args(["file", "input"])))]
 struct EstimateArgs {
-    #[arg(long)]
-    input: PathBuf,
+    /// Audio file to estimate for.
+    #[arg(value_name = "FILE")]
+    file: Option<PathBuf>,
+    /// Same as FILE.
+    #[arg(long, value_name = "FILE")]
+    input: Option<PathBuf>,
     #[arg(long)]
     models_dir: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = Device::Auto)]
@@ -135,7 +196,23 @@ fn parse_overlap(s: &str) -> Result<f32, String> {
     }
 }
 
+/// Decided before parsing, so even argument errors come out in the right form.
+fn human_output() -> bool {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let format = args.iter().enumerate().find_map(|(i, a)| {
+        a.strip_prefix("--format=")
+            .map(str::to_owned)
+            .or_else(|| (a == "--format").then(|| args.get(i + 1).cloned().unwrap_or_default()))
+    });
+    match format.as_deref() {
+        Some("human") => true,
+        Some("json") => false,
+        _ => std::io::stdout().is_terminal(),
+    }
+}
+
 fn main() {
+    events::set_human(human_output());
     std::panic::set_hook(Box::new(|info| {
         let message = info.to_string();
         events::emit(&Event::Error {
@@ -185,11 +262,20 @@ fn main() {
             Ok(()) => 0,
             Err(e) => report(e),
         },
+        Command::Play(args) => match play(args) {
+            Ok(()) => 0,
+            Err(e) => report(e),
+        },
     };
     std::process::exit(code);
 }
 
-fn separate(args: SeparateArgs) -> Result<(), EngineError> {
+fn separate(mut args: SeparateArgs) -> Result<(), EngineError> {
+    let input = args
+        .file
+        .take()
+        .or(args.input.take())
+        .expect("clap requires a file");
     let cancel = Cancel::install().map_err(EngineError::Internal)?;
     let env = ort::init().with_name("voxsplit").build().map_err(|e| {
         EngineError::ModelLoad(anyhow::anyhow!("ONNX Runtime failed to start: {e}"))
@@ -197,7 +283,7 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
 
     let out_dir = match args.out_dir {
         Some(dir) => dir,
-        None => default_out_dir(&args.input)?,
+        None => default_out_dir(&input)?,
     };
     let model = |file: &str| match &args.models_dir {
         Some(dir) => dir.join(file),
@@ -207,6 +293,7 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         Quality::Best => (KARAOKE_BEST, 1),
         Quality::Fast => (KARAOKE_FAST, 3),
     };
+    let reveal = args.reveal.then(|| out_dir.clone());
     let job = Job {
         tool: match args.tool {
             ToolArg::LeadBacking => Tool::LeadBacking,
@@ -220,7 +307,7 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
             .karaoke_model
             .clone()
             .unwrap_or_else(|| model(karaoke_file)),
-        input: args.input,
+        input,
         out_dir,
         vocal_passes: if args.input_is_vocals {
             0
@@ -244,17 +331,101 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         coreml_cache: coreml_cache_dir(),
         timings: timings_path(),
     };
-    pipeline::run(&env, &job, &cancel).map(|_| ())
+    pipeline::run(&env, &job, &cancel)?;
+    if let Some(dir) = reveal {
+        // Best effort: the stems are written either way.
+        let _ = std::process::Command::new("open").arg(dir).status();
+    }
+    Ok(())
 }
 
-fn estimate(args: EstimateArgs) -> Result<(), EngineError> {
+fn play(args: PlayArgs) -> Result<(), EngineError> {
+    let mut files = match args.paths.as_slice() {
+        [dir] if dir.is_dir() => preview::stems_in(dir),
+        paths => paths.to_vec(),
+    };
+    files.retain(|f| {
+        !args
+            .mute
+            .iter()
+            .any(|m| preview::stem_of(f) == Some(m.stem()))
+    });
+    if files.is_empty() {
+        return Err(EngineError::BadArgs(
+            "nothing to play: pass a VoxSplit results folder or stem files (and don't mute them all)"
+                .into(),
+        ));
+    }
+    let names: Vec<String> = files
+        .iter()
+        .map(|f| match preview::stem_of(f) {
+            Some(stem) => human::stem_label(stem).to_lowercase(),
+            None => f
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+        })
+        .collect();
+
+    let (mixed, rate) = preview::mix(&files).map_err(EngineError::Decode)?;
+    let length = mixed.len() as f64 / f64::from(rate);
+    let temp = std::env::temp_dir().join(format!("voxsplit-play-{}.wav", std::process::id()));
+    let mut sink =
+        audio::WavSink::create(&temp, rate, rate, BitDepth::F32).map_err(EngineError::Write)?;
+    sink.write(&mixed.l, &mixed.r).map_err(EngineError::Write)?;
+    drop(mixed);
+    let temp = sink.finish().map_err(EngineError::Write)?;
+
+    let cancel = Cancel::install().map_err(EngineError::Internal)?;
+    let result = (|| {
+        let mut player = std::process::Command::new("afplay")
+            .arg(&temp)
+            .spawn()
+            .map_err(|e| EngineError::Internal(anyhow::anyhow!("cannot start afplay: {e}")))?;
+        eprintln!(
+            "Playing {} · {} · Ctrl-C to stop",
+            names.join(" + "),
+            human::clock(length)
+        );
+        let started = std::time::Instant::now();
+        loop {
+            if player
+                .try_wait()
+                .map_err(|e| EngineError::Internal(e.into()))?
+                .is_some()
+            {
+                break;
+            }
+            if cancel.is_cancelled() {
+                let _ = player.kill();
+                let _ = player.wait();
+                break;
+            }
+            let at = started.elapsed().as_secs_f64().min(length);
+            eprint!("\r\x1b[2K  {} / {}", human::clock(at), human::clock(length));
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        eprintln!();
+        Ok(())
+    })();
+    let _ = std::fs::remove_file(&temp);
+    result
+}
+
+fn estimate(mut args: EstimateArgs) -> Result<(), EngineError> {
+    let input = args
+        .file
+        .take()
+        .or(args.input.take())
+        .expect("clap requires a file");
     let model = |file: &str| match &args.models_dir {
         Some(dir) => dir.join(file),
         None => bundled_model(file),
     };
     let config = |file: &str| ModelConfig::for_model(&model(file)).map_err(EngineError::ModelLoad);
     let vocal = config(VOCAL_MODEL)?;
-    let duration = audio::duration_sec(&args.input).map_err(EngineError::Decode)?;
+    let duration = audio::duration_sec(&input).map_err(EngineError::Decode)?;
     let samples = (duration * vocal.sample_rate as f64) as usize;
     let timings = TimingStore::open(timings_path());
     let device = device::expected_name(args.device);
@@ -316,18 +487,25 @@ fn default_out_dir(input: &std::path::Path) -> Result<PathBuf, EngineError> {
 }
 
 /// Bundled models: inside an app/plugin bundle (`Contents/Helpers/../Resources/models`),
-/// a shared install, or the repo's `models/` when run from `engine/target/<profile>/`.
+/// next to the engine in a shared install (`/Library/Application Support/VoxSplit`, which
+/// the installer links as `/usr/local/bin/voxsplit`), the per-user shared folder, or the
+/// repo's `models/` when run from `engine/target/<profile>/`.
 fn bundled_model(file: &str) -> PathBuf {
     let mut dirs = Vec::new();
+    // Canonical, so a symlinked `voxsplit` on the PATH finds the real install.
     if let Some(exe_dir) = std::env::current_exe()
         .ok()
         .and_then(|p| p.canonicalize().ok())
         .and_then(|p| p.parent().map(PathBuf::from))
     {
         dirs.push(exe_dir.join("../Resources/models"));
+        dirs.push(exe_dir.join("models"));
         if let Some(home) = home() {
             dirs.push(home.join("Library/Application Support/VoxSplit/models"));
         }
+        dirs.push(PathBuf::from(
+            "/Library/Application Support/VoxSplit/models",
+        ));
         dirs.push(exe_dir.join("../../../models"));
     }
     dirs.iter()
