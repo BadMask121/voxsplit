@@ -1,0 +1,15 @@
+{
+  "name": "voxsplit-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "voxsplit.triplejmusic.art: the download page, the install script and the .pkg downloads (Cloudflare Worker + static assets + R2).",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.154.0"
+  }
+}

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoxSplit · Split lead and backing vocals on your Mac</title>
+  <meta name="description" content="VoxSplit separates a song's lead vocal from its backing vocals, or the vocals from the instrumental, on your Mac. Free, open source and offline: a Mac app, a VST3/AU plugin for FL Studio, and a command-line tool.">
+  <link rel="canonical" href="https://voxsplit.triplejmusic.art/">
+  <meta name="theme-color" content="#121214">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://voxsplit.triplejmusic.art/">
+  <meta property="og:title" content="VoxSplit · Split lead and backing vocals on your Mac">
+  <meta property="og:description" content="Free, open source and offline. A Mac app, a VST3/AU plugin for FL Studio, and a command-line tool.">
+  <meta property="og:image" content="https://voxsplit.triplejmusic.art/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "VoxSplit",
+    "description": "Separates lead and backing vocals, or vocals and instrumental, on your Mac.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "macOS 14 or later (Apple silicon)",
+    "softwareVersion": "0.1.0",
+    "downloadUrl": "https://voxsplit.triplejmusic.art/download/latest",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Triple J", "url": "https://triplejmusic.art" }
+  }
+  </script>
+  <link rel="stylesheet" href="/styles.css">
+  <script>document.documentElement.classList.add("js")</script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav">
+    <a class="brand" href="/" aria-label="VoxSplit home">
+      <img src="/mark.svg" width="28" height="28" alt="">
+      <span>VoxSplit</span>
+    </a>
+    <nav aria-label="Sections">
+      <a href="#install">Install</a>
+      <a href="#setup">Setup</a>
+      <a href="#links">Links</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-github" href="https://github.com/BadMask121/voxsplit" aria-label="VoxSplit on GitHub">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow enter">Free · Open source · Runs offline</p>
+        <h1 class="enter">Split lead and backing vocals.<br><span>On your Mac.</span></h1>
+        <p class="lede enter">VoxSplit separates a song’s lead vocal from its backing vocals, or the vocals from the instrumental, with AI models running on your Mac’s Neural Engine and GPU. Nothing is uploaded.</p>
+        <div class="cta enter">
+          <a class="button primary" href="/download/VoxSplit-0.1.0.pkg" data-release-href>
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 15.5h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Download for Mac
+          </a>
+          <a class="button" href="https://github.com/BadMask121/voxsplit">View source</a>
+        </div>
+        <p class="fine enter">Version <span data-release="version">0.1.0</span> · <span data-release="size">310 MB</span> · Apple silicon, macOS 14 or later</p>
+        <div class="enter">
+          <p class="or">Or install from Terminal:</p>
+          <div class="command" data-copy-root>
+            <span class="prompt" aria-hidden="true">$</span>
+            <code data-copy-text>curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash</code>
+            <button class="copy" type="button" aria-label="Copy the install command"><span class="copy-icons" aria-hidden="true"><svg class="i-copy" viewBox="0 0 16 16" width="15" height="15"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><svg class="i-check" viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+          </div>
+        </div>
+      </div>
+      <figure class="shot enter">
+        <img src="/shot-lead-backing.png" width="540" height="684" alt="The VoxSplit window after splitting a song: lead vocals and backing vocals ready to play, reveal or drag into a project." fetchpriority="high">
+      </figure>
+    </section>
+
+    <section class="pipeline" aria-labelledby="how">
+      <h2 id="how" class="section-title">How it works</h2>
+      <ol class="flow">
+        <li class="node"><span class="dot mix"></span>Your song</li>
+        <li class="edge" aria-hidden="true"></li>
+        <li class="node"><span class="dot vocals"></span>Vocals <small>Kim Vocal 2</small></li>
+        <li class="edge" aria-hidden="true"></li>
+        <li class="node split">
+          <span><span class="dot lead"></span>Lead</span>
+          <span><span class="dot backing"></span>Backing</span>
+          <small>BS-RoFormer (Best) or MDX Karaoke (Fast)</small>
+        </li>
+      </ol>
+      <div class="features">
+        <article class="card">
+          <h3><span class="dot lead"></span>Lead &amp; Backing</h3>
+          <p>Two models in a row: the first pulls the vocals out of the mix, the second splits the lead from the harmonies and doubles. Extra passes clean up what’s left.</p>
+        </article>
+        <article class="card">
+          <h3><span class="dot instrumental"></span>Vocal Remover</h3>
+          <p>Vocals and instrumental from any song. A three-minute track takes about 15 seconds on an M2 Max.</p>
+        </article>
+        <article class="card">
+          <h3><span class="dot backing"></span>Preview, then drag</h3>
+          <p>Play every stem together, mute any one of them, then drag the files straight into your project. The stems add back up to the original.</p>
+        </article>
+      </div>
+      <ul class="facts">
+        <li>Mac app</li><li>VST3 &amp; AU plugin</li><li>Command line</li><li>CoreML: Neural Engine + GPU</li><li>Works offline</li><li>MIT licensed</li>
+      </ul>
+    </section>
+
+    <section id="install" class="install" aria-labelledby="install-title">
+      <h2 id="install-title" class="section-title">Install</h2>
+      <p class="section-lede">One installer puts the app, the FL Studio plugin and the <code>voxsplit</code> command on your Mac. They share one copy of the models (about 330 MB).</p>
+      <div class="install-grid">
+        <article class="card">
+          <h3>With the installer</h3>
+          <ol class="steps">
+            <li><a href="/download/VoxSplit-0.1.0.pkg" data-release-href>Download <span data-release="file">VoxSplit-0.1.0.pkg</span></a> and open it.</li>
+            <li>macOS says it can’t verify the developer, because VoxSplit isn’t notarized yet. Open <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.</li>
+            <li>Click through the installer and enter your password.</li>
+          </ol>
+        </article>
+        <article class="card">
+          <h3>From Terminal</h3>
+          <p class="card-note">Skips the Open Anyway step.</p>
+          <p class="label">Everything (asks for your password)</p>
+          <div class="command small" data-copy-root>
+            <code data-copy-text>curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash</code>
+            <button class="copy" type="button" aria-label="Copy"><span class="copy-icons" aria-hidden="true"><svg class="i-copy" viewBox="0 0 16 16" width="15" height="15"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><svg class="i-check" viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+          </div>
+          <p class="label">Only the command-line tool, no password</p>
+          <div class="command small" data-copy-root>
+            <code data-copy-text>curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --cli</code>
+            <button class="copy" type="button" aria-label="Copy"><span class="copy-icons" aria-hidden="true"><svg class="i-copy" viewBox="0 0 16 16" width="15" height="15"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><svg class="i-check" viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+          </div>
+        </article>
+      </div>
+      <details class="paths">
+        <summary>What gets installed where</summary>
+        <table>
+          <tbody>
+            <tr><td>The app</td><td><code>/Applications/VoxSplit.app</code></td></tr>
+            <tr><td>VST3 plugin</td><td><code>/Library/Audio/Plug-Ins/VST3/VoxSplit.vst3</code></td></tr>
+            <tr><td>Audio Unit</td><td><code>/Library/Audio/Plug-Ins/Components/VoxSplit.component</code></td></tr>
+            <tr><td>Engine and models</td><td><code>/Library/Application Support/VoxSplit</code></td></tr>
+            <tr><td>Command</td><td><code>/usr/local/bin/voxsplit</code></td></tr>
+            <tr><td>With <code>--cli</code></td><td><code>~/Library/Application Support/VoxSplit</code> and <code>~/.local/bin/voxsplit</code></td></tr>
+            <tr><td>Your stems</td><td><code>~/Music/VoxSplit/&lt;song name&gt;</code></td></tr>
+          </tbody>
+        </table>
+      </details>
+    </section>
+
+    <section id="setup" class="setup" aria-labelledby="setup-title">
+      <h2 id="setup-title" class="section-title">Setup</h2>
+      <div class="tabs" role="tablist" aria-label="Where you use VoxSplit">
+        <span class="tab-pill" aria-hidden="true"></span>
+        <button class="tab" role="tab" id="tab-app" aria-controls="panel-app" aria-selected="true">Mac app</button>
+        <button class="tab" role="tab" id="tab-fl" aria-controls="panel-fl" aria-selected="false" tabindex="-1">FL Studio</button>
+        <button class="tab" role="tab" id="tab-cli" aria-controls="panel-cli" aria-selected="false" tabindex="-1">Command line</button>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-app" aria-labelledby="tab-app">
+        <h3 class="panel-title">Mac app</h3>
+        <ol class="steps">
+          <li>Open <b>VoxSplit</b> from Applications.</li>
+          <li>Drop a song on it, or click to choose one. WAV, AIFF, FLAC, MP3 and M4A all work.</li>
+          <li>Pick a tool. <b>Lead &amp; Backing</b> has two qualities: <b>Best</b> (cleanest) and <b>Fast</b>. <b>Vocal Remover</b> gives vocals and instrumental.</li>
+          <li>Click <b>Separate</b>. The window shows how long it will take. The stems are saved to <code>~/Music/VoxSplit/&lt;song name&gt;</code>.</li>
+          <li>Press <b>▶</b> to hear all the stems together, use each stem’s speaker button to mute it, and drag a stem into any app to use it.</li>
+        </ol>
+        <p class="tip">The very first separation takes about a minute longer while macOS prepares the models for your Mac. After that, they start straight away.</p>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-fl" aria-labelledby="tab-fl">
+        <h3 class="panel-title">FL Studio</h3>
+        <ol class="steps">
+          <li>Open FL Studio. If VoxSplit isn’t in your plugin list yet, go to <b>Options → Manage plugins</b> and click <b>Find more plugins</b>.</li>
+          <li>Open the <b>Mixer</b>, pick an empty insert and add <b>VoxSplit</b> from the effect slots.</li>
+          <li>Drop a song on the plugin and click <b>Separate</b>. Your project keeps playing while it works.</li>
+          <li>Preview plays through that mixer insert. When it sounds right, drag <b>Lead vocals</b> or <b>Backing vocals</b> into the Playlist.</li>
+        </ol>
+        <p class="tip">The VST3 and Audio Unit versions should work in other hosts too. VoxSplit is tested in FL Studio 2026.</p>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-cli" aria-labelledby="tab-cli">
+        <h3 class="panel-title">Command line</h3>
+        <pre class="code"><code><span class="c"># Lead and backing vocals, saved to ~/Music/VoxSplit/song</span>
+voxsplit separate song.mp3
+
+<span class="c"># Faster model, three refinement passes, then show the files</span>
+voxsplit separate song.mp3 --quality fast --passes 3 --reveal
+
+<span class="c"># Vocals and instrumental</span>
+voxsplit separate song.mp3 --tool vocal-remover
+
+<span class="c"># Hear the stems together, or mute one</span>
+voxsplit play ~/Music/VoxSplit/song
+voxsplit play ~/Music/VoxSplit/song --mute backing
+
+<span class="c"># How long will it take?</span>
+voxsplit estimate song.mp3</code></pre>
+        <table class="options">
+          <thead><tr><th>Option</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>--tool</code></td><td><code>lead-backing</code> (default) or <code>vocal-remover</code></td></tr>
+            <tr><td><code>--quality</code></td><td><code>best</code> (BS-RoFormer, default) or <code>fast</code> (MDX Karaoke)</td></tr>
+            <tr><td><code>--passes</code></td><td>Refinement passes, 1–5. Each one pulls more backing out of the lead.</td></tr>
+            <tr><td><code>--vocal-passes</code></td><td>Vocal passes, 0–5. 0 means the file is already vocals only.</td></tr>
+            <tr><td><code>--out-dir</code></td><td>Where to save the stems.</td></tr>
+            <tr><td><code>--bit-depth</code></td><td><code>32f</code> (default), <code>24</code> or <code>16</code></td></tr>
+            <tr><td><code>--reveal</code></td><td>Open the output folder in Finder when done.</td></tr>
+            <tr><td><code>--format json</code></td><td>One JSON event per line, for scripts. This is the default when the output is piped.</td></tr>
+          </tbody>
+        </table>
+        <p class="tip">Run <code>voxsplit --help</code> or <code>voxsplit separate --help</code> for everything else. Ctrl-C stops a run and leaves no partial files.</p>
+      </div>
+    </section>
+
+    <section id="links" class="links" aria-labelledby="links-title">
+      <h2 id="links-title" class="section-title">Links</h2>
+      <dl class="link-list">
+        <div>
+          <dt>Installer</dt>
+          <dd><a href="/download/VoxSplit-0.1.0.pkg" data-release-href data-release="pkg-url">https://voxsplit.triplejmusic.art/download/VoxSplit-0.1.0.pkg</a></dd>
+        </div>
+        <div>
+          <dt>Always the latest</dt>
+          <dd><a href="/download/latest">https://voxsplit.triplejmusic.art/download/latest</a></dd>
+        </div>
+        <div>
+          <dt>SHA-256</dt>
+          <dd><code class="hash" data-release="sha256">bf11546108c195489567b86e51e77c278f5787712ed1eb335e24a13a9f9aa414</code></dd>
+        </div>
+        <div>
+          <dt>Install script</dt>
+          <dd><a href="/install.sh">https://voxsplit.triplejmusic.art/install.sh</a></dd>
+        </div>
+        <div>
+          <dt>Source code</dt>
+          <dd><a href="https://github.com/BadMask121/voxsplit">https://github.com/BadMask121/voxsplit</a></dd>
+        </div>
+        <div>
+          <dt>Report a problem</dt>
+          <dd><a href="https://github.com/BadMask121/voxsplit/issues">https://github.com/BadMask121/voxsplit/issues</a></dd>
+        </div>
+      </dl>
+    </section>
+
+    <section id="faq" class="faq" aria-labelledby="faq-title">
+      <h2 id="faq-title" class="section-title">Questions</h2>
+      <details>
+        <summary>Why does macOS say it can’t verify VoxSplit?</summary>
+        <p>VoxSplit isn’t notarized by Apple yet, which needs a paid developer account. Click <b>Open Anyway</b> in System Settings → Privacy &amp; Security once, or install from Terminal, which skips that step. The source code is public on GitHub, and the Links section above has the installer’s SHA-256.</p>
+      </details>
+      <details>
+        <summary>Is my music uploaded anywhere?</summary>
+        <p>No. Separation runs entirely on your Mac and works offline. The only download is the installer itself.</p>
+      </details>
+      <details>
+        <summary>Which Macs does it run on?</summary>
+        <p>Macs with Apple silicon (M1 or later) running macOS 14 Sonoma or later, with about 1 GB of free space. Intel Macs and Windows aren’t supported yet.</p>
+      </details>
+      <details>
+        <summary>How long does a song take?</summary>
+        <p>For a 3:10 song on an M2 Max: about 2 minutes with Lead &amp; Backing on Best, about 1 minute on Fast, and about 15 seconds with the Vocal Remover. More passes take longer. VoxSplit shows its own estimate before you start, and it learns from each run on your Mac.</p>
+      </details>
+      <details>
+        <summary>What do I get?</summary>
+        <p>WAV files at the song’s own sample rate (32-bit float by default) in <code>~/Music/VoxSplit/&lt;song name&gt;</code>: <code>lead_vocals.wav</code> and <code>backing_vocals.wav</code>, or <code>vocals.wav</code> and <code>instrumental.wav</code>. Each pair adds back up to the original.</p>
+      </details>
+      <details>
+        <summary>How do I uninstall it?</summary>
+        <p>Run this in Terminal. Your stems in <code>~/Music/VoxSplit</code> are kept.</p>
+        <div class="command small" data-copy-root>
+          <code data-copy-text>curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --uninstall</code>
+          <button class="copy" type="button" aria-label="Copy"><span class="copy-icons" aria-hidden="true"><svg class="i-copy" viewBox="0 0 16 16" width="15" height="15"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><svg class="i-check" viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
+        </div>
+      </details>
+      <details>
+        <summary>Whose models does it use?</summary>
+        <p>VoxSplit runs models made by the separation community: <b>Kim Vocal 2</b> by Kimberley Jensen and <b>UVR-MDX-NET Karaoke 2</b>, both from the <a href="https://github.com/Anjok07/ultimatevocalremovergui">Ultimate Vocal Remover</a> project, and the <b>BS-RoFormer karaoke</b> model by frazer-becruily, converted using <a href="https://github.com/ZFTurbo/Music-Source-Separation-Training">ZFTurbo’s</a> BS-RoFormer code. The models belong to their authors. VoxSplit’s own code is MIT licensed.</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <a class="brand small" href="/"><img src="/mark.svg" width="20" height="20" alt=""><span>VoxSplit <span data-release="version">0.1.0</span></span></a>
+    <p>Made by <a href="https://triplejmusic.art">Triple J</a> · <a href="https://github.com/BadMask121/voxsplit">GitHub</a> · MIT</p>
+  </footer>
+
+  <div class="sr-only" aria-live="polite" data-announcer></div>
+</body>
+</html>

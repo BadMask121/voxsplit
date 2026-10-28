@@ -1,10 +1,17 @@
 # VoxSplit
 
 Offline lead/backing vocal separation for macOS, as an **FL Studio-compatible
-VST3/AU plugin** and a **native SwiftUI app**. Both are thin frontends over one
-Rust engine that runs ONNX models on the Apple Neural Engine/GPU via CoreML.
-Nothing leaves your machine, and end users install nothing else: no Python,
-no runtimes, no terminal.
+VST3/AU plugin**, a **native SwiftUI app** and a **command-line tool**. All three
+are thin frontends over one Rust engine that runs ONNX models on the Apple Neural
+Engine/GPU via CoreML. Nothing leaves your machine, and end users install nothing
+else: no Python, no runtimes.
+
+**Download:** https://voxsplit.triplejmusic.art (Apple silicon, macOS 14+), or from Terminal:
+
+```bash
+curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash               # app + plugins + voxsplit command
+curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --cli   # only the command, no password
+```
 
 ```
 song.wav ─► Kim Vocal 2 ─► vocals ─► karaoke model ─► lead_vocals.wav + backing_vocals.wav
@@ -15,7 +22,8 @@ song.wav ─► Kim Vocal 2 ─► vocals ─► karaoke model ─► lead_vocal
 | Quality | Model | 3:10 song on an M2 Max |
 | --- | --- | --- |
 | **Best** (default) | BS-RoFormer karaoke, Core ML GPU | ~2 min (first run ever: about +1 min to compile) |
-| **Fast** | MDX-Net karaoke, 3 passes | ~23 s |
+| **Fast** | MDX-Net karaoke, 3 passes | ~1 min |
+| Vocal Remover | Kim Vocal 2 | ~15 s |
 
 Two tools, in both the plugin and the app:
 
@@ -30,11 +38,14 @@ while it runs. Estimates learn from each run on your Mac.
 ## Layout
 
 ```
-engine/    Rust CLI (voxsplit-engine): decode → STFT → ONNX Runtime → overlap-add → WAV
+engine/    Rust CLI (voxsplit / voxsplit-engine): decode → STFT → ONNX Runtime → overlap-add → WAV
 plugin/    JUCE 9 plugin (VST3, AU, Standalone): drop zone, Separate, preview, drag-out
 macos/     SwiftUI app (SwiftPM): the same flow; VoxSplitKit holds the async Process() runner
 models/    ONNX weights (downloaded, gitignored) + committed sidecar JSON hyperparameters
-scripts/   fetch-models, build-engine, build-plugin, build-app, embed, sign, test-all
+installer/ .pkg pieces: distribution.xml, welcome/conclusion pages, postinstall
+site/      voxsplit.triplejmusic.art: Cloudflare Worker + static page + install.sh; installers in R2
+assets/    the VoxSplit mark (icon.svg → macos/AppIcon.icns via scripts/make-icon.sh)
+scripts/   fetch-models, build-engine, build-plugin, build-app, build-pkg, release, embed, sign, test-all
 docs/      architecture, bundle layout, engine protocol, measured performance
 ```
 
@@ -61,11 +72,20 @@ metadata onto new bundle folders, and `codesign` refuses those. Run
 `codesign --verify` on the staged or installed copies, not on `dist/`. For
 distribution, set `VOXSPLIT_SIGN_IDENTITY` to a Developer ID and notarize.
 
-Use the engine directly:
+Release (maintainers):
+
+```bash
+scripts/build-pkg.sh        # → dist/VoxSplit-<version>.pkg: app + VST3 + AU + `voxsplit`, sharing one
+                            #   engine + models in /Library/Application Support/VoxSplit
+scripts/release.sh          # build-pkg, then upload to R2, update site/release.json, deploy the site,
+                            #   and check the live download (needs `wrangler login`)
+```
+
+Use the engine directly from the checkout:
 
 ```bash
 engine/target/release/voxsplit-engine probe
-engine/target/release/voxsplit-engine separate --input="$HOME/Music/song.wav" --keep-instrumental
+engine/target/release/voxsplit-engine separate "$HOME/Music/song.wav" --keep-instrumental
 cd engine && cargo run --release --example stem_check -- null "$HOME/Music/song.wav" "$HOME/Music/VoxSplit/song"
 ```
 
@@ -74,9 +94,9 @@ cd engine && cargo run --release --example stem_check -- null "$HOME/Music/song.
 **FL Studio:** rescan plugins, then put **VoxSplit** on a mixer insert.
 
 1. Drop a song onto the plugin (or click to browse) and press **Separate** (or Return).
-2. When it's done, press ▶ on a stem to audition it. The stem replaces that
-   insert's input while it plays, so you hear it where you're working. Space
-   toggles the lead.
+2. When it's done, press ▶ above the stems to hear them all together; each stem's
+   speaker button mutes it. The preview replaces that insert's input while it
+   plays, so you hear it where you're working. Space plays and pauses.
 3. Drag a stem row onto the playlist, or press **Reveal**.
 
 The run keeps going if you close the plugin window, and the result is saved
@@ -84,5 +104,15 @@ with the project.
 
 **App:** the same flow in `VoxSplit.app`. You can also drop songs on its Dock
 icon or use *Open With*. Stems are written to `~/Music/VoxSplit/<song>/`.
+
+**Terminal:** readable progress in a terminal, JSON Lines when piped (`--format json` forces it).
+
+```bash
+voxsplit separate song.mp3                                   # lead + backing → ~/Music/VoxSplit/song
+voxsplit separate song.mp3 --quality fast --passes 3 --reveal
+voxsplit separate song.mp3 --tool vocal-remover               # vocals + instrumental
+voxsplit play ~/Music/VoxSplit/song --mute backing            # hear the stems together
+voxsplit estimate song.mp3
+```
 
 See [docs/](docs/) for the architecture, bundle layout, engine protocol and measured performance.

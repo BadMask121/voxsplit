@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "voxsplit-site",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  // The page and its assets. The Worker runs first only where it fills in the
+  // current release (from release.json) or serves downloads from R2.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/", "/install.sh", "/download/*"]
+  },
+  // Installers are too big for static assets (25 MiB cap): they live in R2.
+  "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "voxsplit-downloads" }],
+  // Its own subdomain; triplejmusic.art itself is the Triple J press kit.
+  "routes": [{ "pattern": "voxsplit.triplejmusic.art", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}
