@@ -33,9 +33,12 @@ namespace
                     contents.getChildFile ("Resources/models") });
        #endif
 
-        const auto shared = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                                .getChildFile ("Application Support/VoxSplit");
-        list.add ({ shared.getChildFile (engineName), shared.getChildFile ("models") });
+        // Shared installs: per user (`install.sh --cli`), then system-wide (the .pkg).
+        for (auto domain : { juce::File::userApplicationDataDirectory, juce::File::commonApplicationDataDirectory })
+        {
+            const auto shared = juce::File::getSpecialLocation (domain).getChildFile ("Application Support/VoxSplit");
+            list.add ({ shared.getChildFile (engineName), shared.getChildFile ("models") });
+        }
         return list;
     }
 }
@@ -52,11 +55,11 @@ EngineLocation locateEngine()
             if (! c.modelsDir.getChildFile (juce::String (name) + ".onnx").existsAsFile()
                 || ! c.modelsDir.getChildFile (juce::String (name) + ".json").existsAsFile())
                 loc.problem = "VoxSplit's model files are missing from " + c.modelsDir.getFullPathName()
-                            + ". Reinstall VoxSplit.";
+                            + ". Reinstall VoxSplit from voxsplit.triplejmusic.art.";
         return loc;
     }
 
     EngineLocation missing;
-    missing.problem = "VoxSplit's engine is missing from the plugin bundle. Reinstall VoxSplit.";
+    missing.problem = "VoxSplit's engine isn't installed. Reinstall VoxSplit from voxsplit.triplejmusic.art.";
     return missing;
 }

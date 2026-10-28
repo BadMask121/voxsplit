@@ -145,6 +145,29 @@ DirectML is the default accelerator (any DX12 GPU). CUDA is opt-in at build
 time (`--features cuda`). Its runtime DLLs are ~1 GB, so it's a separate
 download. Device selection in the engine is already `cfg`-gated for both.
 
+### The installer (`scripts/build-pkg.sh`)
+
+The downloadable `VoxSplit-<version>.pkg` doesn't embed the engine and models in
+each bundle (that would ship ~1 GB). It installs one shared copy instead:
+
+```
+/Applications/VoxSplit.app                              (no Helpers/, no models)
+/Library/Audio/Plug-Ins/VST3/VoxSplit.vst3               (same)
+/Library/Audio/Plug-Ins/Components/VoxSplit.component    (same)
+/Library/Application Support/VoxSplit/voxsplit-engine    (signed, hardened runtime)
+/Library/Application Support/VoxSplit/models/*.onnx|json
+/usr/local/bin/voxsplit → the engine                    (made by postinstall, so the
+                                                          package never owns /usr/local)
+```
+
+Both locators search the bundle first, then `~/Library/Application Support/VoxSplit`
+(`install.sh --cli`), then `/Library/Application Support/VoxSplit`; the engine finds
+`models/` next to itself. Bundles are marked non-relocatable, so the installer
+never "upgrades" a same-id copy elsewhere on disk (e.g. a dev build) instead. The
+package refuses Intel Macs and macOS < 14. Files an installer writes carry no
+quarantine flag, so after the one *Open Anyway* for the unnotarized `.pkg` (or
+none at all via `curl … | bash`), the app, plugins and engine all run.
+
 ## Output location
 
 Frontends pass `--out-dir=~/Music/VoxSplit/<input file stem>/`. Results are

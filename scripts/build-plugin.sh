@@ -2,12 +2,15 @@
 # Build the JUCE plugin (VST3 + AU + Standalone), embed the engine and models,
 # sign, copy to dist/, and install the VST3/AU into ~/Library/Audio/Plug-Ins.
 #   --no-install   build into dist/ only
+#   --stage-only   build and sign in $VOXSPLIT_STAGE only (scripts/build-pkg.sh)
 #   JUCE_SOURCE_DIR=<path>   use a local JUCE 9.0.4 checkout instead of downloading
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INSTALL=1
+COPY_DIST=1
 [[ "${1:-}" == "--no-install" ]] && INSTALL=0
+[[ "${1:-}" == "--stage-only" ]] && INSTALL=0 && COPY_DIST=0
 
 "$ROOT/scripts/fetch-models.sh"
 "$ROOT/scripts/build-engine.sh" >/dev/null
@@ -34,7 +37,7 @@ for bundle in "VST3/VoxSplit.vst3" "AU/VoxSplit.component" "Standalone/VoxSplit.
   # No resource forks / xattrs: JUCE's Finder metadata also breaks codesign.
   ditto --norsrc --noextattr "$ART/$bundle" "$STAGE/$name"
   "$ROOT/scripts/embed.sh" "$STAGE/$name"
-  ditto --norsrc --noextattr "$STAGE/$name" "$DIST/$name"
+  [[ $COPY_DIST == 1 ]] && ditto --norsrc --noextattr "$STAGE/$name" "$DIST/$name"
 done
 
 if [[ $INSTALL == 1 ]]; then

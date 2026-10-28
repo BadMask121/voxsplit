@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>VoxSplit</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="never" require-scripts="false" rootVolumeOnly="true" hostArchitectures="arm64"/>
+    <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.voxsplit.pkg"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.voxsplit.pkg" visible="false">
+        <pkg-ref id="com.voxsplit.pkg"/>
+    </choice>
+    <pkg-ref id="com.voxsplit.pkg" version="__VERSION__" onConclusion="none">VoxSplit-component.pkg</pkg-ref>
+</installer-gui-script>

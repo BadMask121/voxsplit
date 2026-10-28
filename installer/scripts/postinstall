@@ -1,0 +1,11 @@
+#!/bin/bash
+# Runs as root after the payload is in place.
+
+# The `voxsplit` command. Linked here rather than shipped in the payload, so the
+# installer never touches /usr/local's ownership (Homebrew lives there on some Macs).
+mkdir -p /usr/local/bin
+ln -sfn "/Library/Application Support/VoxSplit/voxsplit-engine" /usr/local/bin/voxsplit
+
+# Make the new Audio Unit visible to hosts without a logout.
+killall -9 AudioComponentRegistrar 2>/dev/null || true
+exit 0

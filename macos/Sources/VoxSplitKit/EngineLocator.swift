@@ -52,8 +52,9 @@ public enum EngineLocator {
     public static let requiredModels = ["Kim_Vocal_2", "UVR_MDXNET_KARA_2", "BS_Roformer_Karaoke"]
 
     /// Search order: `VOXSPLIT_ENGINE` / `VOXSPLIT_MODELS` (development, e.g. `swift run`),
-    /// the app bundle (`Contents/Helpers`, `Contents/Resources/models`), then
-    /// `~/Library/Application Support/VoxSplit`.
+    /// the app bundle (`Contents/Helpers`, `Contents/Resources/models`), then the shared
+    /// installs: `~/Library/Application Support/VoxSplit` (`install.sh --cli`) and
+    /// `/Library/Application Support/VoxSplit` (the .pkg).
     public static func locate(
         bundleURL: URL = Bundle.main.bundleURL,
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -68,8 +69,11 @@ public enum EngineLocator {
         candidates.append((contents.appending(path: "Helpers/\(engineName)"),
                            contents.appending(path: "Resources/models", directoryHint: .isDirectory)))
 
-        let support = URL.applicationSupportDirectory.appending(path: "VoxSplit", directoryHint: .isDirectory)
-        candidates.append((support.appending(path: engineName), support.appending(path: "models", directoryHint: .isDirectory)))
+        let shared = [URL.applicationSupportDirectory]
+            + FileManager.default.urls(for: .applicationSupportDirectory, in: .localDomainMask)
+        for support in shared.map({ $0.appending(path: "VoxSplit", directoryHint: .isDirectory) }) {
+            candidates.append((support.appending(path: engineName), support.appending(path: "models", directoryHint: .isDirectory)))
+        }
 
         let files = FileManager.default
         for candidate in candidates {

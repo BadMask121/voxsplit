@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # embed.sh <bundle>: copy the engine and models into a .vst3/.component/.app
 # using the layout in docs/01-architecture.md, then sign it inside-out.
+#   VOXSPLIT_SLIM=1   sign only: the bundle uses the shared install in
+#                     /Library/Application Support/VoxSplit (the .pkg, scripts/build-pkg.sh)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUNDLE="${1:?usage: embed.sh <bundle>}"
+
+if [[ "${VOXSPLIT_SLIM:-0}" == 1 ]]; then
+  exec "$ROOT/scripts/sign.sh" "$BUNDLE"
+fi
 ENGINE="$ROOT/engine/target/release/voxsplit-engine"
 
 [[ -x "$ENGINE" ]] || { echo "error: build the engine first (scripts/build-engine.sh)" >&2; exit 1; }

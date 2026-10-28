@@ -22,6 +22,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp -f "$BIN/VoxSplit" "$APP/Contents/MacOS/VoxSplit"
 cp -f "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
+cp -f "$ROOT/macos/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 "$ROOT/scripts/embed.sh" "$APP"
 if [[ "${1:-}" == "--no-dist" ]]; then

@@ -269,11 +269,11 @@ int renderSnapshot (const juce::File& out);
 
 /** Runs a real separation of a short test file, then draws the plugin window
     as it opens on the finished run (stems, transport and all), off-screen. */
-static int renderEditorSnapshot (const juce::File& out, SeparationJob::Tool tool)
+static int renderEditorSnapshot (const juce::File& out, SeparationJob::Tool tool, double seconds, const juce::String& name)
 {
     const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("voxsplit-editor-snapshot");
     dir.createDirectory();
-    const auto input = writeTestWav (dir.getChildFile ("My Song.wav"), 4.0, 44100.0);
+    const auto input = writeTestWav (dir.getChildFile (name + ".wav"), seconds, 44100.0);
 
     VoxSplitProcessor processor;
     processor.prepareToPlay (44100.0, 512); // as a host does before showing the editor
@@ -309,11 +309,13 @@ int main (int argc, char* argv[])
     juce::ScopedJuceInitialiser_GUI init;
     if (argc == 3 && juce::String (argv[1]) == "--snapshot")
         return renderSnapshot (juce::File (juce::String (argv[2])));
-    // --snapshot-editor out.png [lead-backing|vocal-remover]
+    // --snapshot-editor out.png [lead-backing|vocal-remover] [seconds] [song name]
     if (argc >= 3 && juce::String (argv[1]) == "--snapshot-editor")
         return renderEditorSnapshot (juce::File (juce::String (argv[2])),
                                      argc > 3 && juce::String (argv[3]) == "vocal-remover" ? SeparationJob::Tool::vocalRemover
-                                                                                          : SeparationJob::Tool::leadBacking);
+                                                                                          : SeparationJob::Tool::leadBacking,
+                                     argc > 4 ? juce::String (argv[4]).getDoubleValue() : 4.0,
+                                     argc > 5 ? juce::String (argv[5]) : juce::String ("My Song"));
 
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
