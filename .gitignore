@@ -13,3 +13,7 @@ dist/
 .idea/
 .vscode/
 *.swp
+
+# RoFormer export tool: Python env and checkpoints live in ~/Library/Caches/VoxSplit
+tools/roformer/.venv/
+__pycache__/

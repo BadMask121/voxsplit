@@ -1,0 +1,20 @@
+[project]
+name = "voxsplit-roformer-export"
+version = "0.1.0"
+description = "Developer-only: export BS-RoFormer separation checkpoints to ONNX for voxsplit-engine"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.4",
+    "einops>=0.8",
+    "rotary-embedding-torch>=0.8",
+    "beartype>=0.18",
+    "packaging",
+    "pyyaml>=6",
+    "numpy>=1.26",
+    "onnx>=1.16",
+    "onnxruntime>=1.19",
+    "soundfile>=0.12",
+]
+
+[tool.uv]
+package = false

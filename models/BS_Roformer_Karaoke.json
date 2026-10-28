@@ -1,0 +1,20 @@
+{
+  "name": "BS-RoFormer Karaoke (frazer & becruily)",
+  "file": "BS_Roformer_Karaoke.onnx",
+  "export": {
+    "script": "scripts/export-roformer.sh",
+    "checkpoint_url": "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/bs_roformer_karaoke_frazer_becruily.ckpt",
+    "checkpoint_sha256": "eb90ee24c1154d83fbcfd27e96182f19e061557cc6e4746953125e08c29389f9",
+    "config_url": "https://github.com/nomadkaraoke/python-audio-separator/releases/download/model-configs/config_bs_roformer_karaoke_frazer_becruily.yaml",
+    "chunk_seconds": 6
+  },
+  "family": "roformer",
+  "sample_rate": 44100,
+  "n_fft": 2048,
+  "hop": 512,
+  "chunk_len": 264704,
+  "zero_dc": true,
+  "primary_stem": "lead",
+  "default_overlap": 0.75,
+  "compute_units": "gpu"
+}

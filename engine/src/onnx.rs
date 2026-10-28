@@ -1,6 +1,8 @@
 //! ONNX Runtime implementation of [`SpectrogramModel`].
 
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, anyhow, ensure};
 use ort::environment::Environment;
@@ -31,8 +33,11 @@ impl OrtModel {
         mut on_fallback: impl FnMut(&str, &str),
     ) -> Result<(Self, &'static str), EngineError> {
         ensure_file(path).map_err(EngineError::ModelLoad)?;
-        let list =
-            candidates(device, coreml_cache).map_err(|e| EngineError::ModelLoad(anyhow!(e)))?;
+        // Fixed-shape graphs (RoFormer exports) take one chunk per call.
+        let batch = if cfg.supports_batching() { batch } else { 1 };
+        let cache = coreml_cache.map(|base| model_cache_dir(base, path));
+        let list = candidates(device, cfg.compute_units, cache.as_deref())
+            .map_err(|e| EngineError::ModelLoad(anyhow!(e)))?;
         let last = list.len() - 1;
         for (i, candidate) in list.into_iter().enumerate() {
             let name = candidate.name;
@@ -44,6 +49,9 @@ impl OrtModel {
                         batch,
                     };
                     model.check_signature().map_err(EngineError::ModelLoad)?;
+                    if let Some(dir) = &cache {
+                        prune_cache(dir);
+                    }
                     return Ok((model, name));
                 }
                 Err(e) if i < last => on_fallback(name, &format!("{e:#}")),
@@ -64,12 +72,7 @@ impl OrtModel {
         );
         ensure!(!self.session.outputs().is_empty(), "model has no outputs");
         if let Some(shape) = self.session.inputs()[0].dtype().tensor_shape() {
-            let want = [
-                self.batch as i64,
-                4,
-                self.cfg.dim_f as i64,
-                self.cfg.dim_t as i64,
-            ];
+            let want = self.cfg.input_shape(self.batch).map(|d| d as i64);
             ensure!(
                 shape.len() == 4,
                 "model input has rank {}, expected 4",
@@ -83,6 +86,52 @@ impl OrtModel {
             }
         }
         Ok(())
+    }
+}
+
+/// One Core ML cache folder per model (by file name and size). ONNX Runtime keys
+/// compiled models by the model's path, so the same model run from the repo, the
+/// app and each plugin bundle would otherwise pile up copies of several hundred MB.
+fn model_cache_dir(base: &Path, model: &Path) -> PathBuf {
+    let stem = model
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model");
+    let size = fs::metadata(model).map(|m| m.len()).unwrap_or(0);
+    let dir = base.join(format!("{stem}-{size}"));
+    let _ = fs::create_dir_all(&dir);
+    // Entries from before per-model folders are bare numeric hashes in `base`.
+    if let Ok(entries) = fs::read_dir(base) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+    dir
+}
+
+/// Keep only the most recently written compiled model in a model's cache folder.
+fn prune_cache(dir: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut compiled: Vec<(SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| {
+            let modified = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            (modified, e.path())
+        })
+        .collect();
+    compiled.sort();
+    compiled.pop(); // the newest is the one this session uses
+    for (_, stale) in compiled {
+        let _ = fs::remove_dir_all(stale);
     }
 }
 
@@ -119,7 +168,7 @@ impl SpectrogramModel for OrtModel {
         // The session's batch size is fixed; pad a short final group with silence.
         let mut data = input.to_vec();
         data.resize(self.batch * one, 0.0);
-        let shape = [self.batch, 4, self.cfg.dim_f, self.cfg.dim_t];
+        let shape = self.cfg.input_shape(self.batch);
         let tensor = Tensor::from_array((shape, data))?;
         let outputs = self.session.run(ort::inputs![tensor])?;
         let (_, out) = outputs[0].try_extract_tensor::<f32>()?;

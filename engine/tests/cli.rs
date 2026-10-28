@@ -100,3 +100,21 @@ fn paths_starting_with_dash_are_values_not_flags() {
     // Parsed fine (would be exit 2 otherwise); fails later on the missing model.
     assert_eq!(out.status.code(), Some(4));
 }
+
+#[test]
+fn quality_picks_the_karaoke_model() {
+    for (quality, model) in [
+        ("best", "BS_Roformer_Karaoke"),
+        ("fast", "UVR_MDXNET_KARA_2"),
+    ] {
+        let out = engine(&[
+            "separate",
+            "--input=/nonexistent/song.wav",
+            "--models-dir=/nonexistent/models",
+            &format!("--quality={quality}"),
+        ]);
+        assert_eq!(out.status.code(), Some(4));
+        let (_, message) = last_error(&out);
+        assert!(message.contains(model), "{quality}: {message}");
+    }
+}

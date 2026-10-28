@@ -21,15 +21,17 @@ voxsplit-engine probe
 | --- | --- | --- |
 | `--input=<path>` | required | wav, aiff, flac, mp3, m4a/aac (decoded by symphonia). Mono is upmixed; >2 channels rejected. |
 | `--out-dir=<path>` | `~/Music/VoxSplit/<input stem>` | Created if missing. Existing stems are replaced atomically. |
-| `--vocal-model=<path.onnx>` | bundled `Kim_Vocal_2.onnx` | Stage 1, mix → vocals. Sidecar `<same name>.json` required. |
-| `--karaoke-model=<path.onnx>` | bundled `UVR_MDXNET_KARA_2.onnx` | Stage 2, vocals → backing (lead = vocals − backing). |
+| `--quality=best\|fast` | `best` | **best**: BS-RoFormer karaoke (frazer & becruily), cleaner and about 6× slower. **fast**: UVR-MDX-NET Karaoke 2. |
+| `--models-dir=<dir>` | bundled models | Folder holding all model files and sidecars. Frontends pass their bundle's `Resources/models`. |
+| `--vocal-model=<path.onnx>` | `Kim_Vocal_2.onnx` | Stage 1, mix → vocals. Sidecar `<same name>.json` required. |
+| `--karaoke-model=<path.onnx>` | chosen by `--quality` | Lead/backing model. MDX karaoke models output the backing side; RoFormer karaoke models output the lead (the sidecar's `primary_stem` says which). |
 | `--input-is-vocals` | off | Skip stage 1 (input is already an a cappella). |
 | `--keep-instrumental` | off | Also write `instrumental.wav` (mix − vocals). |
-| `--passes=<1–5>` | `3` | Karaoke passes. The first splits the vocals; each further pass re-runs the karaoke model on the current lead and moves the backing it still finds into the backing stem. `lead + backing` stays equal to the vocals. |
+| `--passes=<1–5>` | `1` best, `3` fast | Karaoke passes. The first splits the vocals; each further pass re-runs the karaoke model on the current lead and moves the backing it still finds into the backing stem. `lead + backing` stays equal to the vocals. |
 | `--device=auto\|coreml\|cuda\|directml\|cpu` | `auto` | An explicit device that fails to initialise is an error (`model_load`). `auto` falls back to CPU. |
-| `--overlap=<0.0–0.95>` | `0.5` | Chunk overlap. Higher means smoother and slower. Chunks always share at least `n_fft` samples, so `0` means "minimum overlap", never abutting chunks. |
+| `--overlap=<0.0–0.95>` | per model: `0.75` RoFormer, `0.5` MDX | Chunk overlap. Higher means smoother and slower. Chunks always share at least `n_fft` samples, so `0` means "minimum overlap", never abutting chunks. |
 | `--batch=<1–16>` | `1` | Chunks per inference call. |
-| `--denoise` | off | Averages `f(x)` and `−f(−x)`. Cleaner, 2× slower. |
+| `--denoise` | off | Averages `f(x)` and `−f(−x)`. Cleaner, 2× slower. MDX models only. |
 | `--bit-depth=32f\|24\|16` | `32f` | Output WAV sample format. |
 
 Bundled-model lookup order: `<exe dir>/../Resources/models/`, then

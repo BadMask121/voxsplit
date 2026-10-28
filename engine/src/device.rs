@@ -8,6 +8,7 @@ use clap::ValueEnum;
 use ort::ep::{self, ExecutionProvider, ExecutionProviderDispatch};
 
 use crate::events::DeviceInfo;
+use crate::model::ComputeUnits;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Device {
@@ -26,7 +27,11 @@ pub struct Candidate {
 
 /// Providers to try, in order, for the requested device. An explicit device
 /// yields exactly one candidate (so failure is an error, not a fallback).
-pub fn candidates(device: Device, coreml_cache: Option<&Path>) -> Result<Vec<Candidate>, String> {
+pub fn candidates(
+    device: Device,
+    units: ComputeUnits,
+    coreml_cache: Option<&Path>,
+) -> Result<Vec<Candidate>, String> {
     let cpu = || Candidate {
         name: "cpu",
         dispatch: cpu_ep(),
@@ -35,7 +40,7 @@ pub fn candidates(device: Device, coreml_cache: Option<&Path>) -> Result<Vec<Can
     match device {
         Device::Auto => {
             #[cfg(target_os = "macos")]
-            list.push(coreml(coreml_cache));
+            list.push(coreml(units, coreml_cache));
             #[cfg(feature = "cuda")]
             list.push(cuda());
             #[cfg(windows)]
@@ -45,7 +50,7 @@ pub fn candidates(device: Device, coreml_cache: Option<&Path>) -> Result<Vec<Can
         Device::Cpu => list.push(cpu()),
         Device::Coreml => {
             #[cfg(target_os = "macos")]
-            list.push(coreml(coreml_cache));
+            list.push(coreml(units, coreml_cache));
         }
         Device::Cuda => {
             #[cfg(feature = "cuda")]
@@ -56,7 +61,7 @@ pub fn candidates(device: Device, coreml_cache: Option<&Path>) -> Result<Vec<Can
             list.push(directml());
         }
     }
-    let _ = coreml_cache;
+    let _ = (units, coreml_cache);
     if list.is_empty() {
         return Err(format!("{device:?} is not supported by this build").to_lowercase());
     }
@@ -71,13 +76,20 @@ fn cpu_ep() -> ExecutionProviderDispatch {
 }
 
 #[cfg(target_os = "macos")]
-fn coreml(cache: Option<&Path>) -> Candidate {
-    use ep::coreml::{ComputeUnits, ModelFormat};
-    // MLProgram covers more operators than the legacy NeuralNetwork format and
-    // lets Core ML schedule across the Neural Engine, GPU and CPU.
+fn coreml(units: ComputeUnits, cache: Option<&Path>) -> Candidate {
+    use ep::coreml::{ComputeUnits as Units, ModelFormat};
+    // MLProgram covers more operators than the legacy NeuralNetwork format. Which
+    // units are fastest is per model: MDX-Net does well across all of them, while
+    // the RoFormer's attention runs ~10x faster pinned to the GPU than on the ANE.
+    let units = match units {
+        ComputeUnits::All => Units::All,
+        ComputeUnits::Gpu => Units::CPUAndGPU,
+        ComputeUnits::Ane => Units::CPUAndNeuralEngine,
+        ComputeUnits::Cpu => Units::CPUOnly,
+    };
     let mut ep = ep::CoreML::default()
         .with_model_format(ModelFormat::MLProgram)
-        .with_compute_units(ComputeUnits::All)
+        .with_compute_units(units)
         .with_static_input_shapes(true);
     if let Some(dir) = cache {
         ep = ep.with_model_cache_dir(dir.display());

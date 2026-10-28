@@ -36,9 +36,20 @@ pub struct Job {
     /// Karaoke passes (1 = a single split, more = refine the lead further).
     pub passes: u8,
     pub device: Device,
+    /// Chunk overlap; `None` uses each model's own default.
+    pub overlap: Option<f32>,
     pub separate: SeparateOptions,
     pub bit_depth: BitDepth,
     pub coreml_cache: Option<PathBuf>,
+}
+
+impl Job {
+    fn options_for(&self, cfg: &ModelConfig) -> SeparateOptions {
+        SeparateOptions {
+            overlap: self.overlap.or(cfg.default_overlap).unwrap_or(0.5),
+            ..self.separate
+        }
+    }
 }
 
 pub fn run(
@@ -117,7 +128,7 @@ pub fn run(
                 &mut model.0,
                 cfg,
                 &mix,
-                job.separate,
+                job.options_for(cfg),
                 |done, total| {
                     cancel.check()?;
                     progress.update(done, total);
@@ -147,6 +158,10 @@ pub fn run(
     // Stage 1's session was dropped above, so only one model is resident at a time.
     let mut model = load(env, job, &job.karaoke_model, &karaoke_cfg)?;
     let comp = karaoke_cfg.compensate;
+    let karaoke_opts = job.options_for(&karaoke_cfg);
+    // MDX karaoke models output the backing side; RoFormer karaoke models output
+    // the lead itself, so the backing they find is the current lead minus it.
+    let primary_is_lead = karaoke_cfg.primary_is_lead();
     let mut lead_audio = vocals;
     let mut backing_audio = Stereo::zeros(lead_audio.len());
     for pass in 0..passes {
@@ -169,16 +184,23 @@ pub fn run(
             &mut model.0,
             &karaoke_cfg,
             &lead_audio,
-            job.separate,
+            karaoke_opts,
             |done, total| {
                 cancel.check()?;
                 progress.update(done, total);
                 Ok(())
             },
-            |_, l, r| {
-                let bl: Vec<f32> = l.iter().map(|v| v * comp).collect();
-                let br: Vec<f32> = r.iter().map(|v| v * comp).collect();
-                found.extend(&bl, &br);
+            |start, l, r| {
+                for (i, (&el, &er)) in l.iter().zip(r).enumerate() {
+                    let (el, er) = (el * comp, er * comp);
+                    if primary_is_lead {
+                        found.l.push(lead_audio.l[start + i] - el);
+                        found.r.push(lead_audio.r[start + i] - er);
+                    } else {
+                        found.l.push(el);
+                        found.r.push(er);
+                    }
+                }
                 Ok(())
             },
         )?;

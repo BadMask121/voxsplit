@@ -1,6 +1,9 @@
-//! Chunked MDX-Net inference with click-free, memory-bounded overlap-add.
+//! Chunked spectrogram-model inference with click-free, memory-bounded overlap-add.
 //!
-//! Mirrors UVR's `SeperateMDX.demix`: the signal is padded with `n_fft/2`
+//! Per chunk, MDX-Net models map a band-limited spectrogram to a spectrogram;
+//! RoFormer models map the full spectrogram to a complex mask that the host
+//! applies. Either way the chunk comes back as a waveform. The chunking mirrors
+//! UVR's `SeperateMDX.demix`: the signal is padded with `n_fft/2`
 //! samples of silence in front (so STFT edge artefacts land in discarded
 //! padding), cut into `hop * (dim_t - 1)`-sample chunks every `step` samples,
 //! and each chunk's output is weighted by a Hann window and normalised by the
@@ -12,7 +15,7 @@ use realfft::num_complex::Complex32;
 
 use crate::audio::Stereo;
 use crate::error::EngineError;
-use crate::model::{ModelConfig, SpectrogramModel};
+use crate::model::{Arch, ModelConfig, SpectrogramModel};
 use crate::stft::{Stft, symmetric_hann};
 
 #[derive(Clone, Copy, Debug)]
@@ -21,7 +24,8 @@ pub struct SeparateOptions {
     pub overlap: f32,
     /// Chunks per model call.
     pub batch: usize,
-    /// Average `f(x)` with `-f(-x)` to cancel model noise (2x cost).
+    /// Average `f(x)` with `-f(-x)` to cancel model noise (2x cost). MDX only:
+    /// a mask model's output doesn't flip sign with its input.
     pub denoise: bool,
 }
 
@@ -87,25 +91,27 @@ pub fn separate(
 
     let starts: Vec<usize> = (0..g.padded_len).step_by(g.step).collect();
     let mut done = 0;
+    let denoise = opts.denoise && matches!(cfg.arch, Arch::Mdx { .. });
     for group in starts.chunks(batch) {
-        let mut spec_in = Vec::with_capacity(group.len() * cfg.input_len());
+        let mut model_in = Vec::with_capacity(group.len() * cfg.input_len());
+        let mut chunk_specs = Vec::with_capacity(group.len());
         for &start in group {
             let part = padded_slice(input, start, g.chunk, g.trim);
-            pack_spectrogram(&mut stft, cfg, &part, &mut spec_in);
+            chunk_specs.push(encode(&mut stft, cfg, &part, &mut model_in));
         }
 
-        let spec_out = run_model(model, &spec_in, group.len(), opts.denoise)?;
-        if spec_out.len() != spec_in.len() {
+        let model_out = run_model(model, &model_in, group.len(), denoise)?;
+        if model_out.len() != model_in.len() {
             return Err(EngineError::Inference(anyhow::anyhow!(
                 "model returned {} values, expected {}",
-                spec_out.len(),
-                spec_in.len()
+                model_out.len(),
+                model_in.len()
             )));
         }
 
         for (i, &start) in group.iter().enumerate() {
-            let one = &spec_out[i * cfg.input_len()..(i + 1) * cfg.input_len()];
-            let wave = unpack_spectrogram(&mut stft, cfg, one);
+            let one = &model_out[i * cfg.input_len()..(i + 1) * cfg.input_len()];
+            let wave = decode(&mut stft, cfg, &chunk_specs[i], one);
             let actual = (g.padded_len - start).min(g.chunk);
             acc.add(start, &wave, &symmetric_hann(actual));
             let next = start + g.step;
@@ -148,42 +154,85 @@ fn padded_slice(input: &Stereo, start: usize, chunk: usize, trim: usize) -> Ster
     part
 }
 
-/// Append one `[4, dim_f, dim_t]` input: channels `[L.re, L.im, R.re, R.im]`,
-/// bins above `dim_f` dropped, bins 0..3 zeroed (UVR does the same).
-fn pack_spectrogram(stft: &mut Stft, cfg: &ModelConfig, part: &Stereo, out: &mut Vec<f32>) {
+/// A chunk's STFT, kept for decoding when the model returns a mask.
+type ChunkSpec = Option<[Vec<Complex32>; 2]>;
+
+/// Append one chunk's model input to `out`.
+fn encode(stft: &mut Stft, cfg: &ModelConfig, part: &Stereo, out: &mut Vec<f32>) -> ChunkSpec {
     let base = out.len();
     out.resize(base + cfg.input_len(), 0.0);
-    let plane = cfg.dim_f * cfg.dim_t;
     let bins = stft.bins();
-    for (c, signal) in [&part.l, &part.r].into_iter().enumerate() {
-        let spec = stft.forward(signal);
-        debug_assert_eq!(spec.len(), cfg.dim_t * bins);
-        for t in 0..cfg.dim_t {
-            for f in 3..cfg.dim_f {
-                let v = spec[t * bins + f];
-                out[base + (2 * c) * plane + f * cfg.dim_t + t] = v.re;
-                out[base + (2 * c + 1) * plane + f * cfg.dim_t + t] = v.im;
+    let frames = cfg.frames();
+    let specs = [stft.forward(&part.l), stft.forward(&part.r)];
+    match cfg.arch {
+        // [4, dim_f, frames]: channels [L.re, L.im, R.re, R.im]; bins above dim_f
+        // dropped, bins 0..3 zeroed (UVR does the same).
+        Arch::Mdx { dim_f, .. } => {
+            let plane = dim_f * frames;
+            for (c, spec) in specs.iter().enumerate() {
+                for t in 0..frames {
+                    for f in 3..dim_f {
+                        let v = spec[t * bins + f];
+                        out[base + (2 * c) * plane + f * frames + t] = v.re;
+                        out[base + (2 * c + 1) * plane + f * frames + t] = v.im;
+                    }
+                }
             }
+            None
+        }
+        // [2·bins, frames, 2], row f·2 + channel (BSRoformer's `b s f t c -> b (f s) t c`).
+        Arch::Roformer { .. } => {
+            for (c, spec) in specs.iter().enumerate() {
+                for t in 0..frames {
+                    for f in 0..bins {
+                        let v = spec[t * bins + f];
+                        let i = base + ((f * 2 + c) * frames + t) * 2;
+                        out[i] = v.re;
+                        out[i + 1] = v.im;
+                    }
+                }
+            }
+            Some(specs)
         }
     }
 }
 
-/// Inverse of `pack_spectrogram`: zero-fill bins `dim_f..`, iSTFT each channel.
-fn unpack_spectrogram(stft: &mut Stft, cfg: &ModelConfig, spec: &[f32]) -> Stereo {
-    let plane = cfg.dim_f * cfg.dim_t;
+/// Turn one chunk's model output back into audio.
+fn decode(stft: &mut Stft, cfg: &ModelConfig, spec: &ChunkSpec, out: &[f32]) -> Stereo {
     let bins = stft.bins();
+    let frames = cfg.frames();
     let mut channels = [Vec::new(), Vec::new()];
     for (c, channel) in channels.iter_mut().enumerate() {
-        let mut full = vec![Complex32::new(0.0, 0.0); cfg.dim_t * bins];
-        for t in 0..cfg.dim_t {
-            for f in 0..cfg.dim_f {
-                full[t * bins + f] = Complex32::new(
-                    spec[(2 * c) * plane + f * cfg.dim_t + t],
-                    spec[(2 * c + 1) * plane + f * cfg.dim_t + t],
-                );
+        let mut full = vec![Complex32::new(0.0, 0.0); frames * bins];
+        match (cfg.arch, spec) {
+            // Spectrogram out: zero-fill the bins above dim_f.
+            (Arch::Mdx { dim_f, .. }, _) => {
+                let plane = dim_f * frames;
+                for t in 0..frames {
+                    for f in 0..dim_f {
+                        full[t * bins + f] = Complex32::new(
+                            out[(2 * c) * plane + f * frames + t],
+                            out[(2 * c + 1) * plane + f * frames + t],
+                        );
+                    }
+                }
             }
+            // Complex mask out: multiply it into the chunk's own STFT.
+            (Arch::Roformer { zero_dc, .. }, Some(specs)) => {
+                for t in 0..frames {
+                    for f in 0..bins {
+                        let i = ((f * 2 + c) * frames + t) * 2;
+                        let mask = Complex32::new(out[i], out[i + 1]);
+                        full[t * bins + f] = specs[c][t * bins + f] * mask;
+                    }
+                    if zero_dc {
+                        full[t * bins] = Complex32::new(0.0, 0.0);
+                    }
+                }
+            }
+            (Arch::Roformer { .. }, None) => unreachable!("encode keeps the STFT for mask models"),
         }
-        *channel = stft.inverse(&full, cfg.dim_t);
+        *channel = stft.inverse(&full, frames);
     }
     let [l, r] = channels;
     Stereo { l, r }
@@ -272,7 +321,7 @@ impl Accumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ModelFamily;
+    use crate::model::ComputeUnits;
 
     /// Returns its input: separation should then reproduce the (band-limited) mix.
     struct Passthrough;
@@ -286,15 +335,18 @@ mod tests {
     fn small_cfg() -> ModelConfig {
         ModelConfig {
             name: "test".into(),
-            family: ModelFamily::Mdx,
             sample_rate: 44_100,
             n_fft: 512,
             hop: 128,
-            dim_f: 257,
-            dim_t: 64,
             compensate: 1.0,
             primary_stem: "vocals".into(),
             batch_dim: "batch_size".into(),
+            default_overlap: None,
+            compute_units: ComputeUnits::All,
+            arch: Arch::Mdx {
+                dim_f: 257,
+                dim_t: 64,
+            },
         }
     }
 
@@ -460,13 +512,64 @@ mod tests {
         assert_eq!(seen, 2);
     }
 
+    /// A RoFormer whose mask is 1 everywhere: the chunk's own STFT comes back unchanged.
+    struct UnitMask;
+    impl SpectrogramModel for UnitMask {
+        fn run(&mut self, input: &[f32], _batch: usize) -> anyhow::Result<Vec<f32>> {
+            Ok(input.chunks(2).flat_map(|_| [1.0, 0.0]).collect())
+        }
+    }
+
+    #[test]
+    fn roformer_unit_mask_reconstructs_input() {
+        let cfg = ModelConfig {
+            primary_stem: "lead".into(),
+            arch: Arch::Roformer {
+                chunk_len: 128 * 63,
+                zero_dc: true,
+            },
+            ..small_cfg()
+        };
+        for &overlap in &[0.5, 0.75] {
+            let input = band_limited_signal(30_000);
+            let mut out = Stereo::default();
+            separate(
+                &mut UnitMask,
+                &cfg,
+                &input,
+                SeparateOptions {
+                    overlap,
+                    ..Default::default()
+                },
+                |_, _| Ok(()),
+                |start, l, r| {
+                    assert_eq!(start, out.len());
+                    out.extend(l, r);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert_eq!(out.len(), input.len());
+            let max_err = input
+                .l
+                .iter()
+                .zip(&out.l)
+                .chain(input.r.iter().zip(&out.r))
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0, f32::max);
+            assert!(max_err < 1e-3, "overlap {overlap}: max error {max_err}");
+        }
+    }
+
     #[test]
     fn mdx_geometry_chunk_counts() {
         let kim = ModelConfig {
             n_fft: 7680,
             hop: 1024,
-            dim_f: 3072,
-            dim_t: 256,
+            arch: Arch::Mdx {
+                dim_f: 3072,
+                dim_t: 256,
+            },
             ..small_cfg()
         };
         assert_eq!(kim.chunk_len(), 261_120);

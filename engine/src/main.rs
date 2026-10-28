@@ -12,7 +12,8 @@ use voxsplit::pipeline::{self, Job};
 use voxsplit::separator::SeparateOptions;
 
 const VOCAL_MODEL: &str = "Kim_Vocal_2.onnx";
-const KARAOKE_MODEL: &str = "UVR_MDXNET_KARA_2.onnx";
+const KARAOKE_FAST: &str = "UVR_MDXNET_KARA_2.onnx";
+const KARAOKE_BEST: &str = "BS_Roformer_Karaoke.onnx";
 
 #[derive(Parser)]
 #[command(
@@ -41,10 +42,16 @@ struct SeparateArgs {
     /// Output folder [default: ~/Music/VoxSplit/<input name>].
     #[arg(long)]
     out_dir: Option<PathBuf>,
-    /// Stage 1 model (mix → vocals) [default: bundled Kim_Vocal_2.onnx].
+    /// best: BS-RoFormer karaoke (cleaner, slower). fast: MDX-Net karaoke.
+    #[arg(long, value_enum, default_value_t = Quality::Best)]
+    quality: Quality,
+    /// Folder holding the model files [default: the bundled models].
+    #[arg(long)]
+    models_dir: Option<PathBuf>,
+    /// Stage 1 model (mix → vocals) [default: Kim_Vocal_2.onnx].
     #[arg(long)]
     vocal_model: Option<PathBuf>,
-    /// Stage 2 model (vocals → backing) [default: bundled UVR_MDXNET_KARA_2.onnx].
+    /// Lead/backing model [default: chosen by --quality].
     #[arg(long)]
     karaoke_model: Option<PathBuf>,
     /// The input is already an a cappella: skip stage 1.
@@ -54,14 +61,15 @@ struct SeparateArgs {
     #[arg(long)]
     keep_instrumental: bool,
     /// Karaoke passes: the first splits the vocals, each further pass pulls
-    /// remaining backing vocals out of the lead.
-    #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=5))]
-    passes: u8,
+    /// remaining backing vocals out of the lead [default: 1 best, 3 fast].
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=5))]
+    passes: Option<u8>,
     #[arg(long, value_enum, default_value_t = Device::Auto)]
     device: Device,
-    /// Fraction of each chunk shared with the next (higher = smoother, slower).
-    #[arg(long, default_value_t = 0.5, value_parser = parse_overlap)]
-    overlap: f32,
+    /// Fraction of each chunk shared with the next (higher = smoother, slower)
+    /// [default: per model, 0.75 RoFormer, 0.5 MDX].
+    #[arg(long, value_parser = parse_overlap)]
+    overlap: Option<f32>,
     /// Chunks per inference call.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     batch: u8,
@@ -70,6 +78,12 @@ struct SeparateArgs {
     denoise: bool,
     #[arg(long, value_enum, default_value_t = BitDepthArg::F32)]
     bit_depth: BitDepthArg,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Quality {
+    Best,
+    Fast,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -151,21 +165,32 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         Some(dir) => dir,
         None => default_out_dir(&args.input)?,
     };
+    let model = |file: &str| match &args.models_dir {
+        Some(dir) => dir.join(file),
+        None => bundled_model(file),
+    };
+    let (karaoke_file, default_passes) = match args.quality {
+        Quality::Best => (KARAOKE_BEST, 1),
+        Quality::Fast => (KARAOKE_FAST, 3),
+    };
     let job = Job {
         vocal_model: args
             .vocal_model
-            .unwrap_or_else(|| bundled_model(VOCAL_MODEL)),
+            .clone()
+            .unwrap_or_else(|| model(VOCAL_MODEL)),
         karaoke_model: args
             .karaoke_model
-            .unwrap_or_else(|| bundled_model(KARAOKE_MODEL)),
+            .clone()
+            .unwrap_or_else(|| model(karaoke_file)),
         input: args.input,
         out_dir,
         input_is_vocals: args.input_is_vocals,
         keep_instrumental: args.keep_instrumental,
-        passes: args.passes,
+        passes: args.passes.unwrap_or(default_passes),
         device: args.device,
+        overlap: args.overlap,
         separate: SeparateOptions {
-            overlap: args.overlap,
+            overlap: 0.5, // replaced per model by Job::options_for
             batch: args.batch as usize,
             denoise: args.denoise,
         },
