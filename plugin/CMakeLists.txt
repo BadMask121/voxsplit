@@ -75,8 +75,12 @@ if(VOXSPLIT_BUILD_TESTS)
         Source/Widgets.cpp
         Source/SeparationJob.cpp
         Source/EngineLocator.cpp
-        Source/StemPreview.cpp)
+        Source/StemPreview.cpp
+        Source/DropZone.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp)
     target_compile_definitions(VoxSplitTests PRIVATE
+        JucePlugin_Name="VoxSplit"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         VOXSPLIT_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -85,6 +89,9 @@ if(VOXSPLIT_BUILD_TESTS)
         juce::juce_gui_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_gui_extra
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 endif()

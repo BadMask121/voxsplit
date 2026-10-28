@@ -41,7 +41,7 @@ struct ContentView: View {
                 .padding(.bottom, 16)
 
             stemsArea
-                .frame(height: 52 * 2 + 8)
+                .frame(height: 28 + 8 + 52 * 2 + 8)
                 .padding(.bottom, 12)
 
             Button(showLog ? "Hide log" : "Show log") { showLog.toggle() }
@@ -68,9 +68,9 @@ struct ContentView: View {
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(.space) {
-            // Space previews the lead, or stops whatever is playing. Keyboard: no animation.
-            guard let lead = manager.stems.first(where: { $0.kind == .lead || $0.kind == .vocals }) else { return .ignored }
-            if player.playing != nil { player.stop() } else { player.play(lead.url) }
+            // Space plays or pauses all stems together. Keyboard: no animation.
+            guard !player.loaded.isEmpty else { return .ignored }
+            player.togglePlay()
             return .handled
         }
         .background {
@@ -172,10 +172,14 @@ struct ContentView: View {
         let shown = order.compactMap { kind in manager.stems.first { $0.kind == kind } }
         if manager.phase == .finished && !shown.isEmpty {
             VStack(spacing: 8) {
+                // All stems play together; each row's speaker mutes its own.
+                TransportBarView()
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, stem in
                     StemRowView(stem: stem, index: index)
                 }
             }
+            .onAppear { player.load(shown.map(\.url)) }
+            .onChange(of: shown.map(\.url)) { _, urls in player.load(urls) }
         } else {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
@@ -216,7 +220,7 @@ struct ContentView: View {
     private func choose(_ url: URL) {
         if manager.phase.isActive { return }
         if manager.choose(url) {
-            player.stop()
+            player.clear()
             rejection = nil
         } else {
             rejection = "VoxSplit can't read \(url.pathExtension.isEmpty ? "that file" : "." + url.pathExtension + " files")"
@@ -233,7 +237,7 @@ struct ContentView: View {
         } else if manager.input == nil {
             showingImporter = true
         } else {
-            player.stop() // the stems being previewed are about to be replaced
+            player.clear() // the stems being previewed are about to be replaced
             manager.start()
         }
     }

@@ -292,6 +292,82 @@ func timeLeft(_ seconds: Double) -> String {
     return "\(s / 60):" + String(format: "%02d", s % 60) + " left"
 }
 
+/// Speaker on/off: whether a stem is audible in the preview.
+struct ListenToggle: View {
+    let audible: Bool
+    let accent: Color
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: audible ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(audible ? Theme.text : Theme.textDim)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Theme.surfaceHi))
+                .background(Circle().fill(accent.opacity(audible ? 0.18 : hovering ? 0.08 : 0)))
+                .overlay(Circle().strokeBorder(audible ? accent.opacity(0.6) : Theme.border, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(ScaleOnPress())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: hovering ? Theme.hover : Theme.hoverOut), value: hovering)
+        .animation(Theme.easeOut(Theme.fade), value: audible)
+        .accessibilityLabel(audible ? "Mute in preview" : "Unmute in preview")
+    }
+}
+
+/// Play/pause for all stems together, the shared position, and a seek line.
+struct TransportBarView: View {
+    @Environment(PreviewPlayer.self) private var player
+    @State private var dragFraction: Double?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            PlayButton(playing: player.isPlaying, accent: Theme.text) { player.togglePlay() }
+            Text("\(clock(displayed * player.duration)) / \(clock(player.duration))")
+                .font(.system(size: 12))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textDim)
+                .frame(width: 84, alignment: .leading)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.surfaceHi).frame(height: 4)
+                    Capsule().fill(Theme.text.opacity(0.85))
+                        .frame(width: max(4, geo.size.width * displayed), height: 4)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in dragFraction = fraction(drag.location.x, geo.size.width) }
+                        .onEnded { drag in
+                            player.seek(fraction(drag.location.x, geo.size.width))
+                            dragFraction = nil
+                        }
+                )
+            }
+        }
+        .frame(height: 28)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Preview all stems")
+    }
+
+    /// While scrubbing, the line follows the pointer; otherwise the playback position.
+    private var displayed: Double { dragFraction ?? player.progress }
+
+    private func fraction(_ x: CGFloat, _ width: CGFloat) -> Double {
+        min(max(Double(x / max(width, 1)), 0), 1)
+    }
+
+    private func clock(_ seconds: Double) -> String {
+        let s = max(0, Int(seconds))
+        return "\(s / 60):" + String(format: "%02d", s % 60)
+    }
+}
+
 // MARK: - Drop zone
 
 struct DropZoneView: View {
@@ -463,7 +539,9 @@ struct StemRowView: View {
         case .instrumental: Theme.instrumental
         }
     }
-    private var isPlaying: Bool { player.playing == stem.url }
+    private var audible: Bool { player.isAudible(stem.url) }
+    /// The hairline shows the shared position on stems you can hear.
+    private var showsPosition: Bool { player.isPlaying && audible && player.loaded.contains(stem.url) }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -479,7 +557,7 @@ struct StemRowView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: 8)
-            PlayButton(playing: isPlaying, accent: accent) { player.toggle(stem.url) }
+            ListenToggle(audible: audible, accent: accent) { player.toggleMute(stem.url) }
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([stem.url]) }
                 .buttonStyle(PressableStyle(kind: .ghost))
                 .frame(width: 76, height: 32)
@@ -492,11 +570,11 @@ struct StemRowView: View {
             GeometryReader { geo in
                 Rectangle()
                     .fill(accent.opacity(0.9))
-                    .frame(width: geo.size.width * (isPlaying ? player.progress : 0), height: 2)
+                    .frame(width: geo.size.width * (showsPosition ? player.progress : 0), height: 2)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
-            .opacity(isPlaying ? 1 : 0)
-            .animation(.easeOut(duration: isPlaying ? Theme.fade : Theme.hoverOut), value: isPlaying)
+            .opacity(showsPosition ? 1 : 0)
+            .animation(.easeOut(duration: showsPosition ? Theme.fade : Theme.hoverOut), value: showsPosition)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .contentShape(RoundedRectangle(cornerRadius: 10))

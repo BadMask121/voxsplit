@@ -61,12 +61,19 @@
 
 ### Previewing stems
 
-- **Plugin:** `StemPreview` plays a finished stem through the insert itself.
-  While a preview runs, the stem replaces the input; otherwise the plugin is a
-  pass-through. Disk reads happen on a read-ahead `TimeSliceThread`.
-  `AudioTransportSource` resamples to the host rate, so the audio thread only
-  copies buffered samples.
-- **App:** `AVAudioPlayer`, one stem at a time.
+All of a run's stems play together, in sync, from one transport (play/pause,
+position, seek). Each stem has its own mute, so you can hear lead only, backing
+only, or both (which sum back to the vocals).
+
+- **Plugin:** `StemPreview` sums one `AudioTransportSource` per stem through the
+  insert itself. While a preview runs, the stems replace the input; otherwise
+  the plugin is a pass-through. Disk reads happen on a read-ahead
+  `TimeSliceThread`, and the transports resample to the host rate, so the audio
+  thread only copies buffered samples. It only *tries* the lock that guards
+  play/seek/mute, so it never waits on the UI. Mutes ramp the gain over a block,
+  so they don't click.
+- **App:** one `AVAudioPlayer` per stem, all started with `play(atTime:)` on the
+  same device-clock instant. Mutes fade over 40 ms.
 
 ## Bundle layouts (zero end-user dependencies)
 

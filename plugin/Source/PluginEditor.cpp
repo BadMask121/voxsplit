@@ -7,7 +7,7 @@ namespace
 {
     constexpr int width = 540;
     // Without the log; Vocal Remover hides two settings rows (quality + refinement).
-    constexpr int baseHeight = 648;
+    constexpr int baseHeight = 684;
     constexpr int leadBackingOnlyHeight = 32 + 6 + 34 + 6;
     constexpr int logHeight = 150;
 
@@ -88,6 +88,10 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     addAndMakeVisible (progress);
     progress.setAlpha (0.0f);
 
+    addChildComponent (transport);
+    transport.onTogglePlay = [this] { preview.togglePlay(); };
+    transport.onSeek = [this] (double fraction) { preview.seek (fraction); };
+
     console.setMultiLine (true);
     console.setReadOnly (true);
     console.setCaretVisible (false);
@@ -109,7 +113,7 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
 VoxSplitEditor::~VoxSplitEditor()
 {
     // With the window gone there'd be no way to stop it.
-    preview.stop();
+    preview.pause();
 }
 
 int VoxSplitEditor::editorHeight() const
@@ -127,7 +131,7 @@ void VoxSplitEditor::showTool()
     vocalRow.caption = remover ? juce::String ("Kim Vocal 2")
                                : juce::String::fromUTF8 ("Kim Vocal 2 \xc2\xb7 0 = file is vocals");
     // The new tool's stems are different files; drop the old rows.
-    rows.clear();
+    clearStems();
     // The host resizes the window; no animation is possible across that boundary.
     setSize (width, editorHeight());
     resized();
@@ -142,12 +146,11 @@ void VoxSplitEditor::showQualityPasses (bool animate)
     repaint();
 }
 
-void VoxSplitEditor::togglePreview (const juce::File& f)
+void VoxSplitEditor::clearStems()
 {
-    if (preview.isPlaying() && preview.getFile() == f)
-        preview.stop();
-    else
-        preview.play (f); // one preview at a time: starting another replaces it
+    preview.clear();
+    rows.clear();
+    transport.setVisible (false);
 }
 
 void VoxSplitEditor::chooseFile (const juce::File& f)
@@ -155,7 +158,7 @@ void VoxSplitEditor::chooseFile (const juce::File& f)
     if (job.isActive())
         return;
 
-    preview.stop();
+    clearStems();
     processor.setInputFile (f);
     dropZone.setFile (f, processor.describe (f));
     job.restore (f, {}); // a new song clears the previous song's stems
@@ -176,8 +179,7 @@ void VoxSplitEditor::primaryClicked()
         return;
     }
 
-    preview.stop(); // the stems being previewed are about to be replaced
-    rows.clear();
+    clearStems(); // the stems being previewed are about to be replaced
     job.start (input, SeparationJob::defaultOutputFolder (input), processor.currentSettings());
 }
 
@@ -205,11 +207,8 @@ bool VoxSplitEditor::keyPressed (const juce::KeyPress& key)
     }
     if (key == juce::KeyPress::spaceKey && ! rows.isEmpty())
     {
-        // Space previews the lead (or stops whatever is playing).
-        if (preview.isPlaying())
-            preview.stop();
-        else
-            togglePreview (rows.getFirst()->getFile());
+        // Space plays or pauses all stems together.
+        preview.togglePlay();
         return true;
     }
     if (key == juce::KeyPress ('o', juce::ModifierKeys::commandModifier, 0))
@@ -228,11 +227,20 @@ void VoxSplitEditor::tick()
     if (progressAlpha.tick (nowMs()))
         progress.setAlpha (progressAlpha.value);
 
+    updatePlayback();
+}
+
+void VoxSplitEditor::updatePlayback()
+{
+    if (rows.isEmpty())
+        return;
     const bool playing = preview.isPlaying();
-    const auto playingFile = preview.getFile();
-    const auto position = playing ? preview.getProgress() : 0.0f;
-    for (auto* row : rows)
-        row->setPlayback (playing && row->getFile() == playingFile, position);
+    const auto length = preview.getLengthSeconds();
+    const auto position = preview.getPositionSeconds();
+    const auto fraction = length > 0.0 ? (float) (position / length) : 0.0f;
+    transport.setState (playing, position, length);
+    for (int i = 0; i < rows.size(); ++i)
+        rows[i]->setPlayback (playing, ! preview.isMuted (i), fraction);
 }
 
 void VoxSplitEditor::sync (bool initial)
@@ -288,6 +296,7 @@ void VoxSplitEditor::sync (bool initial)
     {
         progressAlpha.snap (showProgress ? 1.0f : 0.0f);
         progress.setAlpha (progressAlpha.value);
+        progress.snap();
     }
     else
     {
@@ -319,8 +328,8 @@ void VoxSplitEditor::sync (bool initial)
     // finished job shows them immediately; animating on every open gets old.
     if (s.phase == Phase::finished && rows.isEmpty())
         showStems (s.outputs, ! initial && shownPhase != Phase::finished);
-    else if (s.phase != Phase::finished)
-        rows.clear();
+    else if (s.phase != Phase::finished && ! rows.isEmpty())
+        clearStems();
 
     if (s.log.size() != shownLogSize)
     {
@@ -349,7 +358,7 @@ void VoxSplitEditor::showStems (const juce::Array<SeparationJob::Output>& output
             if (out.stem == kind.stem && (remover || out.stem != "instrumental"))
             {
                 auto* row = rows.add (new StemRow (kind.title, kind.colour, out.file));
-                row->onTogglePreview = [this, file = out.file] { togglePreview (file); };
+                row->onListenChanged = [this, index] (bool audible) { preview.setMuted (index, ! audible); };
                 addAndMakeVisible (row);
                 if (animate)
                     row->enter (index);
@@ -357,6 +366,14 @@ void VoxSplitEditor::showStems (const juce::Array<SeparationJob::Output>& output
                     row->setAlpha (1.0f);
                 ++index;
             }
+
+    // All stems play together, in sync; each row's speaker mutes its own.
+    juce::Array<juce::File> files;
+    for (auto* row : rows)
+        files.add (row->getFile());
+    preview.load (files);
+    transport.setVisible (! rows.isEmpty());
+    updatePlayback();
 }
 
 void VoxSplitEditor::resized()
@@ -401,6 +418,8 @@ void VoxSplitEditor::resized()
     progress.setBounds (area.removeFromTop (26));
     area.removeFromTop (16);
 
+    transport.setBounds (area.removeFromTop (28));
+    area.removeFromTop (8);
     rowsArea = area.removeFromTop (52 * 2 + 8);
     auto r = rowsArea;
     for (auto* row : rows)
@@ -485,6 +504,8 @@ void VoxSplitEditor::paint (juce::Graphics& g)
         g.fillPath (dashed);
         g.setColour (colours::textDim.withAlpha (0.7f));
         g.setFont (font (12.5f));
-        g.drawText ("Lead and backing stems will appear here", rowsArea, juce::Justification::centred);
+        g.drawText (vocalRemover() ? "Vocals and instrumental will appear here"
+                                   : "Lead and backing stems will appear here",
+                    rowsArea, juce::Justification::centred);
     }
 }

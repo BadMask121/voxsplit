@@ -30,7 +30,10 @@ private:
     void tick();
     void sync (bool initial);
     void showStems (const juce::Array<SeparationJob::Output>&, bool animate);
-    void togglePreview (const juce::File&);
+    /** Removes the stem rows and unloads them from the preview. */
+    void clearStems();
+    /** Pushes the preview's play state and position to the transport and rows. */
+    void updatePlayback();
 
     VoxSplitProcessor& processor;
     SeparationJob& job;
@@ -57,6 +60,7 @@ private:
         model doing the work, and it shows that quality's remembered pass count. */
     void showQualityPasses (bool animate);
     vox::ProgressStrip progress;
+    vox::TransportBar transport;
     juce::OwnedArray<vox::StemRow> rows;
     juce::TextEditor console;
 

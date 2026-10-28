@@ -109,6 +109,49 @@ private:
     juce::VBlankAttachment vblank { this, [this] { tick(); } };
 };
 
+/** Speaker on/off: whether a stem is audible in the preview. Crossfades between
+    the two glyphs and answers presses. */
+class ListenToggle final : public juce::Button
+{
+public:
+    explicit ListenToggle (juce::Colour accent);
+    void setListening (bool on, bool animate);
+    bool isListening() const noexcept { return on; }
+
+private:
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+    void buttonStateChanged() override;
+    void tick();
+
+    juce::Colour accent;
+    bool on = true;
+    Tween press, hover, state;
+    juce::VBlankAttachment vblank { this, [this] { tick(); } };
+};
+
+/** Play/pause for all stems together, the shared position, and a seek line. */
+class TransportBar final : public juce::Component
+{
+public:
+    TransportBar();
+
+    std::function<void()> onTogglePlay;
+    std::function<void (double)> onSeek; // 0..1
+
+    void setState (bool playing, double positionSec, double lengthSec);
+
+private:
+    void resized() override;
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void seekTo (float x);
+
+    PlayButton play { colours::text };
+    juce::Rectangle<int> timeArea, track;
+    double position = 0.0, length = 0.0;
+};
+
 /** Overall progress with a smoothed, linear-feeling fill and an indeterminate mode. */
 class ProgressStrip final : public juce::Component
 {
@@ -116,6 +159,8 @@ public:
     enum class Mode { indeterminate, determinate, done };
 
     void setState (Mode mode, float fraction, const juce::String& label, const juce::String& detail);
+    /** Jump the fill to its target, e.g. when the window opens on a finished run. */
+    void snap() { shown = target; repaint(); }
 
 private:
     void paint (juce::Graphics&) override;
@@ -134,13 +179,14 @@ class StemRow final : public juce::Component
 public:
     StemRow (const juce::String& title, juce::Colour accent, const juce::File& file);
 
-    std::function<void()> onTogglePreview;
+    /** The speaker toggle changed: true = audible. */
+    std::function<void (bool)> onListenChanged;
 
     /** Fade and lift into place after `index` stagger steps. */
     void enter (int index);
 
-    /** Called every frame by the editor with the preview's state for this row. */
-    void setPlayback (bool playing, float progress);
+    /** Called every frame by the editor with the shared preview state. */
+    void setPlayback (bool playing, bool audible, float progress);
 
     const juce::File& getFile() const noexcept { return file; }
 
@@ -155,7 +201,7 @@ private:
     juce::String title;
     juce::Colour accent;
     juce::File file;
-    PlayButton play;
+    ListenToggle listen;
     PressableButton reveal { "Reveal", PressableButton::Style::ghost };
     Tween appear, hover, playingAmount;
     float playProgress = 0.0f;

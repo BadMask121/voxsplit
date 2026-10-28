@@ -416,6 +416,153 @@ void PassSlider::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+ListenToggle::ListenToggle (juce::Colour accentIn) : juce::Button ("Listen"), accent (accentIn)
+{
+    state.snap (1.0f);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setWantsKeyboardFocus (false);
+    setTitle ("Audible in preview");
+}
+
+void ListenToggle::setListening (bool shouldListen, bool animate)
+{
+    on = shouldListen;
+    setTitle (on ? "Audible in preview" : "Muted in preview");
+    if (animate)
+        state.animateTo (on ? 1.0f : 0.0f, motion::fade);
+    else
+        state.snap (on ? 1.0f : 0.0f);
+    repaint();
+}
+
+void ListenToggle::buttonStateChanged()
+{
+    const bool down = isDown() && isEnabled();
+    press.animateTo (down ? 1.0f : 0.0f, down ? motion::press : motion::release);
+    const bool over = isOver() && isEnabled();
+    hover.animateTo (over ? 1.0f : 0.0f, over ? motion::hover : motion::hoverOut);
+}
+
+void ListenToggle::tick()
+{
+    const auto now = nowMs();
+    const bool a = press.tick (now), b = hover.tick (now), c = state.tick (now);
+    if (a || b || c)
+        repaint();
+}
+
+void ListenToggle::paintButton (juce::Graphics& g, bool, bool)
+{
+    auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    if (! prefersReducedMotion())
+    {
+        const auto scale = 1.0f - 0.04f * press.value;
+        g.addTransform (juce::AffineTransform::scale (scale, scale, bounds.getCentreX(), bounds.getCentreY()));
+    }
+
+    auto circle = bounds.withSizeKeepingCentre (bounds.getHeight(), bounds.getHeight());
+    g.setColour (colours::surfaceHi.interpolatedWith (accent, 0.18f * state.value + 0.06f * hover.value));
+    g.fillEllipse (circle);
+    g.setColour (colours::border.interpolatedWith (accent, 0.6f * state.value + 0.25f * hover.value));
+    g.drawEllipse (circle.reduced (0.5f), 1.0f);
+
+    // Speaker body, then either sound waves (on) or a slash (off), crossfading.
+    const auto c = circle.getCentre();
+    juce::Path speaker;
+    speaker.startNewSubPath (c.x - 6.0f, c.y - 2.5f);
+    speaker.lineTo (c.x - 3.5f, c.y - 2.5f);
+    speaker.lineTo (c.x + 0.5f, c.y - 6.0f);
+    speaker.lineTo (c.x + 0.5f, c.y + 6.0f);
+    speaker.lineTo (c.x - 3.5f, c.y + 2.5f);
+    speaker.lineTo (c.x - 6.0f, c.y + 2.5f);
+    speaker.closeSubPath();
+    g.setColour (colours::text.withAlpha (0.55f + 0.45f * state.value));
+    g.fillPath (speaker);
+
+    juce::Path waves;
+    waves.addCentredArc (c.x + 1.5f, c.y, 3.5f, 3.5f, 0.0f, 0.6f, juce::MathConstants<float>::pi - 0.6f, true);
+    waves.addCentredArc (c.x + 1.5f, c.y, 6.5f, 6.5f, 0.0f, 0.6f, juce::MathConstants<float>::pi - 0.6f, true);
+    g.setColour (colours::text.withAlpha (state.value));
+    g.strokePath (waves, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    juce::Path slash;
+    slash.startNewSubPath (c.x + 3.0f, c.y - 3.5f);
+    slash.lineTo (c.x + 8.0f, c.y + 3.5f);
+    slash.startNewSubPath (c.x + 8.0f, c.y - 3.5f);
+    slash.lineTo (c.x + 3.0f, c.y + 3.5f);
+    g.setColour (colours::textDim.withAlpha (1.0f - state.value));
+    g.strokePath (slash, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+//==============================================================================
+TransportBar::TransportBar()
+{
+    addAndMakeVisible (play);
+    play.onClick = [this] { if (onTogglePlay) onTogglePlay(); };
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setTitle ("Preview all stems");
+}
+
+void TransportBar::setState (bool playing, double positionSec, double lengthSec)
+{
+    play.setPlaying (playing);
+    if (std::abs (positionSec - position) > 0.01 || std::abs (lengthSec - length) > 0.01)
+    {
+        position = positionSec;
+        length = lengthSec;
+        repaint();
+    }
+}
+
+void TransportBar::resized()
+{
+    auto area = getLocalBounds();
+    play.setBounds (area.removeFromLeft (28).withSizeKeepingCentre (28, 28));
+    area.removeFromLeft (10);
+    timeArea = area.removeFromLeft (84);
+    track = area.reduced (4, 0);
+}
+
+static juce::String clock (double seconds)
+{
+    const auto s = juce::jmax (0, (int) seconds);
+    return juce::String (s / 60) + ":" + juce::String (s % 60).paddedLeft ('0', 2);
+}
+
+void TransportBar::paint (juce::Graphics& g)
+{
+    g.setFont (font (12.0f));
+    g.setColour (colours::textDim);
+    g.drawText (clock (position) + " / " + clock (length), timeArea, juce::Justification::centredLeft);
+
+    const auto cy = (float) track.getCentreY();
+    const auto x0 = (float) track.getX(), w = (float) track.getWidth();
+    const auto fraction = length > 0.0 ? (float) juce::jlimit (0.0, 1.0, position / length) : 0.0f;
+    g.setColour (colours::surfaceHi);
+    g.fillRoundedRectangle (x0, cy - 2.0f, w, 4.0f, 2.0f);
+    g.setColour (colours::text.withAlpha (0.85f));
+    g.fillRoundedRectangle (x0, cy - 2.0f, juce::jmax (4.0f, w * fraction), 4.0f, 2.0f);
+}
+
+void TransportBar::seekTo (float x)
+{
+    if (track.getWidth() > 0 && onSeek)
+        onSeek (juce::jlimit (0.0, 1.0, (double) (x - (float) track.getX()) / (double) track.getWidth()));
+}
+
+void TransportBar::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.x >= track.getX() - 4)
+        seekTo (e.position.x);
+}
+
+void TransportBar::mouseDrag (const juce::MouseEvent& e)
+{
+    if (e.mouseDownPosition.x >= (float) track.getX() - 4.0f)
+        seekTo (e.position.x);
+}
+
+//==============================================================================
 void ProgressStrip::setState (Mode newMode, float fraction, const juce::String& newLabel, const juce::String& newDetail)
 {
     // A new run starts from zero; otherwise progress only ever moves forward.
@@ -493,10 +640,14 @@ void ProgressStrip::paint (juce::Graphics& g)
 
 //==============================================================================
 StemRow::StemRow (const juce::String& titleIn, juce::Colour accentIn, const juce::File& fileIn)
-    : title (titleIn), accent (accentIn), file (fileIn), play (accentIn)
+    : title (titleIn), accent (accentIn), file (fileIn), listen (accentIn)
 {
-    addAndMakeVisible (play);
-    play.onClick = [this] { if (onTogglePreview) onTogglePreview(); };
+    addAndMakeVisible (listen);
+    listen.onClick = [this] {
+        listen.setListening (! listen.isListening(), true);
+        if (onListenChanged)
+            onListenChanged (listen.isListening());
+    };
     addAndMakeVisible (reveal);
     reveal.onClick = [this] { file.revealToUser(); };
     setMouseCursor (juce::MouseCursor::DraggingHandCursor);
@@ -511,11 +662,13 @@ void StemRow::enter (int index)
     appear.animateTo (1.0f, motion::enter, easeOut, index * motion::stagger);
 }
 
-void StemRow::setPlayback (bool playing, float progress)
+void StemRow::setPlayback (bool playing, bool audible, float progress)
 {
-    play.setPlaying (playing);
-    playingAmount.animateTo (playing ? 1.0f : 0.0f, playing ? motion::fade : motion::hoverOut);
-    if (playing && std::abs (progress - playProgress) > 0.0005f)
+    if (audible != listen.isListening())
+        listen.setListening (audible, false);
+    const bool show = playing && audible;
+    playingAmount.animateTo (show ? 1.0f : 0.0f, show ? motion::fade : motion::hoverOut);
+    if (show && std::abs (progress - playProgress) > 0.0005f)
     {
         playProgress = progress;
         repaint();
@@ -543,7 +696,7 @@ void StemRow::resized()
     auto area = getLocalBounds().reduced (10);
     reveal.setBounds (area.removeFromRight (76));
     area.removeFromRight (8);
-    play.setBounds (area.removeFromRight (32).withSizeKeepingCentre (32, 32));
+    listen.setBounds (area.removeFromRight (32).withSizeKeepingCentre (32, 32));
 }
 
 void StemRow::mouseEnter (const juce::MouseEvent&) { hover.animateTo (1.0f, motion::hover); }

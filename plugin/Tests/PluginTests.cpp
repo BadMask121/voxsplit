@@ -5,6 +5,8 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include "../Source/PluginEditor.h"
+#include "../Source/PluginProcessor.h"
 #include "../Source/SeparationJob.h"
 #include "../Source/StemPreview.h"
 
@@ -194,13 +196,15 @@ public:
             expect (! preview.render (buffer));
         }
 
-        beginTest ("plays a stem at a different host rate, then stops at the end");
+        beginTest ("plays stems together at a different host rate, then stops at the end");
         {
+            const auto second = writeTestWav (tempDir.getFile().getChildFile ("backing_vocals.wav"), 1.0, 44100.0);
             StemPreview preview;
             preview.prepare (48000.0, 512);
-            preview.play (stem);
+            preview.load ({ stem, second });
+            expectEquals (preview.getNumStems(), 2);
+            preview.play();
             expect (preview.isPlaying());
-            expect (preview.getFile() == stem);
 
             juce::AudioBuffer<float> buffer (2, 512);
             double energy = 0.0;
@@ -212,21 +216,48 @@ public:
                 ++blocks;
                 juce::Thread::sleep (2);
             }
-            expect (energy / juce::jmax (1, blocks) > 0.05, "preview produced the stem's audio");
+            expect (energy / juce::jmax (1, blocks) > 0.08, "both stems summed into the output");
             expect (blocks >= 90 && blocks <= 110, "about one second of output at 48 kHz, got " + juce::String (blocks) + " blocks");
             expect (! preview.isPlaying(), "stops by itself at the end");
         }
 
-        beginTest ("stop returns to pass-through");
+        beginTest ("muting one stem halves the level; pause returns to pass-through");
         {
+            const auto second = writeTestWav (tempDir.getFile().getChildFile ("b.wav"), 2.0, 44100.0);
+            const auto first = writeTestWav (tempDir.getFile().getChildFile ("a.wav"), 2.0, 44100.0);
             StemPreview preview;
             preview.prepare (44100.0, 256);
-            preview.play (stem);
-            juce::AudioBuffer<float> buffer (2, 256);
-            expect (preview.render (buffer));
-            preview.stop();
-            expect (! preview.render (buffer));
-            expect (! preview.isPlaying());
+            preview.load ({ first, second });
+
+            auto level = [&] {
+                juce::AudioBuffer<float> b (2, 256);
+                double sum = 0.0;
+                for (int i = 0; i < 40; ++i)
+                {
+                    preview.render (b);
+                    if (i >= 20) sum += b.getRMSLevel (0, 0, 256); // after the gain ramp
+                    juce::Thread::sleep (2);
+                }
+                return sum / 20.0;
+            };
+            preview.play();
+            const auto both = level();
+            preview.setMuted (1, true);
+            expect (preview.isMuted (1));
+            const auto one = level();
+            expectWithinAbsoluteError (one / both, 0.5, 0.05);
+
+            preview.pause();
+            juce::AudioBuffer<float> b (2, 256);
+            expect (! preview.render (b), "paused: pass-through");
+            preview.seek (0.5);
+            expectWithinAbsoluteError (preview.getPositionSeconds(), 1.0, 0.05);
+
+            preview.load ({ first, second }); // the editor reopening
+            expect (preview.isMuted (1), "same stems keep their mutes");
+            expectWithinAbsoluteError (preview.getPositionSeconds(), 1.0, 0.05);
+            preview.load ({ second });
+            expect (! preview.isMuted (0), "new stems start audible");
         }
     }
 };
@@ -236,11 +267,53 @@ static StemPreviewTests stemPreviewTests;
 
 int renderSnapshot (const juce::File& out);
 
+/** Runs a real separation of a short test file, then draws the plugin window
+    as it opens on the finished run (stems, transport and all), off-screen. */
+static int renderEditorSnapshot (const juce::File& out, SeparationJob::Tool tool)
+{
+    const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("voxsplit-editor-snapshot");
+    dir.createDirectory();
+    const auto input = writeTestWav (dir.getChildFile ("My Song.wav"), 4.0, 44100.0);
+
+    VoxSplitProcessor processor;
+    processor.prepareToPlay (44100.0, 512); // as a host does before showing the editor
+    processor.setTool (tool);
+    processor.setInputFile (input);
+    auto& job = processor.getJob();
+    if (! job.start (input, SeparationJob::defaultOutputFolder (input), processor.currentSettings(), repoEngine())
+        || ! waitFor ([&] { return ! job.isActive(); }, 180000)
+        || job.snapshot().phase != SeparationJob::Phase::finished)
+    {
+        std::cerr << "separation failed: " << job.snapshot().error << std::endl;
+        return 1;
+    }
+
+    std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
+    juce::Image image (juce::Image::ARGB, editor->getWidth() * 2, editor->getHeight() * 2, true);
+    {
+        juce::Graphics g (image);
+        g.addTransform (juce::AffineTransform::scale (2.0f));
+        editor->paintEntireComponent (g, true);
+    }
+    editor.reset();
+    SeparationJob::defaultOutputFolder (input).deleteRecursively();
+
+    juce::PNGImageFormat png;
+    out.deleteFile();
+    juce::FileOutputStream stream (out);
+    return png.writeImageToStream (image, stream) ? 0 : 1;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI init;
     if (argc == 3 && juce::String (argv[1]) == "--snapshot")
         return renderSnapshot (juce::File (juce::String (argv[2])));
+    // --snapshot-editor out.png [lead-backing|vocal-remover]
+    if (argc >= 3 && juce::String (argv[1]) == "--snapshot-editor")
+        return renderEditorSnapshot (juce::File (juce::String (argv[2])),
+                                     argc > 3 && juce::String (argv[3]) == "vocal-remover" ? SeparationJob::Tool::vocalRemover
+                                                                                          : SeparationJob::Tool::leadBacking);
 
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
