@@ -21,26 +21,28 @@ cmake --build "$BUILD" --config Release -j "$(sysctl -n hw.ncpu)"
 
 ART="$BUILD/VoxSplit_artefacts/Release"
 DIST="$ROOT/dist"
-mkdir -p "$DIST"
+# Bundles are embedded and signed outside the checkout: if the repo lives in an
+# iCloud-synced folder, the file provider stamps com.apple.FinderInfo onto new bundle
+# folders, and codesign rejects them. dist/ gets clean copies.
+STAGE="${VOXSPLIT_STAGE:-$HOME/Library/Caches/VoxSplit/stage}"
+mkdir -p "$DIST" "$STAGE"
 for bundle in "VST3/VoxSplit.vst3" "AU/VoxSplit.component" "Standalone/VoxSplit.app"; do
   name="$(basename "$bundle")"
   # The Standalone build is a test harness for the plugin UI; keep it apart from the SwiftUI app.
   [[ "$name" == "VoxSplit.app" ]] && name="VoxSplit Plugin Standalone.app"
-  rm -rf "${DIST:?}/$name"
-  # ditto without resource forks / xattrs: JUCE's Finder metadata breaks codesign.
-  ditto --norsrc --noextattr "$ART/$bundle" "$DIST/$name"
-  "$ROOT/scripts/embed.sh" "$DIST/$name"
+  rm -rf "${STAGE:?}/$name" "${DIST:?}/$name"
+  # No resource forks / xattrs: JUCE's Finder metadata also breaks codesign.
+  ditto --norsrc --noextattr "$ART/$bundle" "$STAGE/$name"
+  "$ROOT/scripts/embed.sh" "$STAGE/$name"
+  ditto --norsrc --noextattr "$STAGE/$name" "$DIST/$name"
 done
 
 if [[ $INSTALL == 1 ]]; then
   PLUGINS="$HOME/Library/Audio/Plug-Ins"
   mkdir -p "$PLUGINS/VST3" "$PLUGINS/Components"
   rm -rf "$PLUGINS/VST3/VoxSplit.vst3" "$PLUGINS/Components/VoxSplit.component"
-  # --noextattr: if the checkout is in an iCloud-synced folder, the file
-  # provider stamps com.apple.FinderInfo onto bundles in dist/ after signing.
-  # Bundle signatures live in files, so dropping xattrs keeps them valid.
-  ditto --norsrc --noextattr "$DIST/VoxSplit.vst3" "$PLUGINS/VST3/VoxSplit.vst3"
-  ditto --norsrc --noextattr "$DIST/VoxSplit.component" "$PLUGINS/Components/VoxSplit.component"
+  ditto --norsrc --noextattr "$STAGE/VoxSplit.vst3" "$PLUGINS/VST3/VoxSplit.vst3"
+  ditto --norsrc --noextattr "$STAGE/VoxSplit.component" "$PLUGINS/Components/VoxSplit.component"
   codesign --verify --deep --strict "$PLUGINS/VST3/VoxSplit.vst3" "$PLUGINS/Components/VoxSplit.component"
   # Make the AU visible without a logout.
   killall -9 AudioComponentRegistrar 2>/dev/null || true

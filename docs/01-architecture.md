@@ -44,6 +44,30 @@
 - **Orphan safety.** The engine polls its parent PID between chunks and exits
   if it gets re-parented to launchd (the DAW crashed or was force-quit).
 
+### Reading the engine's output
+
+- **Plugin:** `SeparationJob` reads the merged stdout and stderr one byte at a
+  time through `ChildProcess::readProcessOutput`. That call uses `fread`, which
+  blocks until the requested count arrives, and one-byte reads come back as
+  soon as anything is written. The worker thread only writes a lock-protected
+  snapshot plus a version counter. The editor polls it on each display frame,
+  so nothing ever calls back into the UI.
+- **App:** `EngineRunner` (VoxSplitKit) reads each pipe with a
+  `readabilityHandler`. `FileHandle.bytes.lines` buffers pipe reads, so a
+  progress stream of a few KB would arrive all at once at exit. The readers
+  aren't children of the cancelled task: after a SIGTERM they keep draining
+  until EOF, so the engine's final `cancelled` event still arrives. If the
+  engine ignores SIGTERM, it gets SIGKILL after 5 s.
+
+### Previewing stems
+
+- **Plugin:** `StemPreview` plays a finished stem through the insert itself.
+  While a preview runs, the stem replaces the input; otherwise the plugin is a
+  pass-through. Disk reads happen on a read-ahead `TimeSliceThread`.
+  `AudioTransportSource` resamples to the host rate, so the audio thread only
+  copies buffered samples.
+- **App:** `AVAudioPlayer`, one stem at a time.
+
 ## Bundle layouts (zero end-user dependencies)
 
 Each shipped bundle is self-contained. It embeds the same engine binary and
