@@ -1,0 +1,15 @@
+{
+  "name": "UVR-MDX-NET Karaoke 2",
+  "file": "UVR_MDXNET_KARA_2.onnx",
+  "url": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR_MDXNET_KARA_2.onnx",
+  "sha256": "bf32e15105a09c0f7dddd2b67346146334d6f3ecb399ed7638eba2ab07cbf5f4",
+  "uvr_hash": "1d64a6d2c30f709b8c9b4ce1366d96ee",
+  "family": "mdx",
+  "sample_rate": 44100,
+  "n_fft": 5120,
+  "hop": 1024,
+  "dim_f": 2048,
+  "dim_t": 256,
+  "compensate": 1.065,
+  "primary_stem": "instrumental"
+}

@@ -1,0 +1,15 @@
+# Model weights are downloaded by scripts/fetch-models.sh (sidecar *.json files are committed)
+models/*.onnx
+
+# Build output
+engine/target/
+plugin/build/
+macos/.build/
+macos/.swiftpm/
+dist/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp

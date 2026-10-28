@@ -1,0 +1,93 @@
+# 02 — Engine protocol (`voxsplit-engine`)
+
+The contract the JUCE plugin and the SwiftUI app both code against. Any change
+here must update `plugin/Source/SeparationJob.cpp` and
+`macos/Sources/VoxSplit/EngineEvent.swift`.
+
+## Invocation
+
+Frontends spawn the binary with an **argv array** (never a shell string) and
+pass every option as a single `--flag=value` element. A path that happens to
+start with `-` can't be misread as a flag.
+
+```
+voxsplit-engine separate --input=<audio file> [options]
+voxsplit-engine probe
+```
+
+### `separate` options
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--input=<path>` | required | wav, aiff, flac, mp3, m4a/aac (decoded by symphonia). Mono is upmixed; >2 channels rejected. |
+| `--out-dir=<path>` | `~/Music/VoxSplit/<input stem>` | Created if missing. Existing stems are replaced atomically. |
+| `--vocal-model=<path.onnx>` | bundled `Kim_Vocal_2.onnx` | Stage 1, mix → vocals. Sidecar `<same name>.json` required. |
+| `--karaoke-model=<path.onnx>` | bundled `UVR_MDXNET_KARA_2.onnx` | Stage 2, vocals → backing (lead = vocals − backing). |
+| `--input-is-vocals` | off | Skip stage 1 (input is already an a cappella). |
+| `--keep-instrumental` | off | Also write `instrumental.wav` (mix − vocals). |
+| `--device=auto\|coreml\|cuda\|directml\|cpu` | `auto` | An explicit device that fails to initialise is an error (`model_load`). `auto` falls back to CPU. |
+| `--overlap=<0.0–0.95>` | `0.5` | Chunk overlap. Higher means smoother and slower. |
+| `--batch=<1–16>` | `1` | Chunks per inference call. |
+| `--denoise` | off | Averages `f(x)` and `−f(−x)`. Cleaner, 2× slower. |
+| `--bit-depth=32f\|24\|16` | `32f` | Output WAV sample format. |
+
+Bundled-model lookup order: `<exe dir>/../Resources/models/`, then
+`~/Library/Application Support/VoxSplit/models/`, then `<exe dir>/../../models/`
+(the repo's `models/` when running from `engine/target/release`).
+
+Outputs (in `--out-dir`): `lead_vocals.wav`, `backing_vocals.wav`, and
+optionally `instrumental.wav`. They're always stereo, at the **input's sample
+rate**, and the same length as the input, so they line up sample-for-sample
+when dropped on the DAW timeline.
+
+## Events (stdout, JSON Lines)
+
+One JSON object per line, flushed immediately, each under 512 bytes (so a
+single `write` is atomic even if stdout and stderr share a pipe). Lines on
+stdout that don't start with `{` should be shown as log text, never treated
+as an error. stderr is free-form diagnostic text (ONNX Runtime warnings,
+panics).
+
+| `event` | Fields | When |
+| --- | --- | --- |
+| `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
+| `start` | `version`, `device`, `stages`, `duration_sec`, `sample_rate`, `channels` | input decoded, models about to load |
+| `stage` | `stage` (`vocals`\|`karaoke`), `index` (1-based), `stages`, `model` | each stage begins |
+| `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1) | after each chunk (throttled to ≥0.5% steps) |
+| `log` | `level` (`info`\|`warn`), `message` | notable milestones |
+| `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
+| `done` | `elapsed_sec` | success, just before exit 0 |
+| `cancelled` | — | SIGTERM/SIGINT or parent died, just before exit 130 |
+| `error` | `code`, `message` | fatal, just before a non-zero exit |
+
+Example run:
+
+```json
+{"event":"start","version":"0.1.0","device":"coreml","stages":2,"duration_sec":213.4,"sample_rate":48000,"channels":2}
+{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2"}
+{"event":"progress","stage":"vocals","fraction":0.37,"overall":0.185}
+{"event":"stage","stage":"karaoke","index":2,"stages":2,"model":"UVR-MDX-NET Karaoke 2"}
+{"event":"output","stem":"lead","path":"/Users/me/Music/VoxSplit/song/lead_vocals.wav"}
+{"event":"output","stem":"backing","path":"/Users/me/Music/VoxSplit/song/backing_vocals.wav"}
+{"event":"done","elapsed_sec":41.8}
+```
+
+## Exit codes
+
+| Code | `error.code` | Meaning |
+| --- | --- | --- |
+| 0 | — | success |
+| 1 | `internal` | unexpected failure / panic |
+| 2 | `bad_args` | invalid flags or values (clap usage errors also exit 2) |
+| 3 | `decode` | input missing, unreadable, or unsupported |
+| 4 | `model_load` | model or sidecar missing/invalid, or the requested device failed |
+| 5 | `inference` | ONNX Runtime failed during a run |
+| 6 | `write` | output directory or file couldn't be written |
+| 130 | — (`cancelled` event) | SIGTERM/SIGINT, or the parent process died |
+
+## Cancellation
+
+Send **SIGTERM** (SwiftUI `Process.terminate()`). The engine finishes the
+current chunk, deletes its `*.partial` files, emits `cancelled` and exits 130.
+**SIGKILL** (JUCE `ChildProcess::kill()`) is also safe: only `*.partial` files
+can be left behind, and the frontend deletes them.
