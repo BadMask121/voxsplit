@@ -42,19 +42,34 @@ impl ModelConfig {
         let sidecar = sidecar_path(onnx_path);
         let text = fs::read_to_string(&sidecar)
             .with_context(|| format!("missing model sidecar {}", sidecar.display()))?;
-        let cfg: Self =
-            serde_json::from_str(&text).with_context(|| format!("invalid model sidecar {}", sidecar.display()))?;
+        let cfg: Self = serde_json::from_str(&text)
+            .with_context(|| format!("invalid model sidecar {}", sidecar.display()))?;
         cfg.validate()?;
         Ok(cfg)
     }
 
     pub fn validate(&self) -> Result<()> {
-        ensure!(self.n_fft % 2 == 0 && self.n_fft >= 64, "n_fft must be even and >= 64");
-        ensure!(self.hop > 0 && self.hop <= self.n_fft, "hop must be in 1..=n_fft");
-        ensure!(self.dim_f >= 4 && self.dim_f <= self.n_fft / 2 + 1, "dim_f must be <= n_fft/2 + 1");
+        ensure!(
+            self.n_fft.is_multiple_of(2) && self.n_fft >= 64,
+            "n_fft must be even and >= 64"
+        );
+        ensure!(
+            self.hop > 0 && self.hop <= self.n_fft,
+            "hop must be in 1..=n_fft"
+        );
+        ensure!(
+            self.dim_f >= 4 && self.dim_f <= self.n_fft / 2 + 1,
+            "dim_f must be <= n_fft/2 + 1"
+        );
         ensure!(self.dim_t >= 2, "dim_t must be >= 2");
-        ensure!(self.chunk_len() > self.n_fft, "chunk (hop * (dim_t - 1)) must exceed n_fft");
-        ensure!(self.compensate.is_finite() && self.compensate > 0.0, "compensate must be positive");
+        ensure!(
+            self.chunk_len() > self.n_fft,
+            "chunk (hop * (dim_t - 1)) must exceed n_fft"
+        );
+        ensure!(
+            self.compensate.is_finite() && self.compensate > 0.0,
+            "compensate must be positive"
+        );
         ensure!(self.sample_rate > 0, "sample_rate must be positive");
         Ok(())
     }

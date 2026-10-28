@@ -26,13 +26,13 @@ voxsplit-engine probe
 | `--input-is-vocals` | off | Skip stage 1 (input is already an a cappella). |
 | `--keep-instrumental` | off | Also write `instrumental.wav` (mix − vocals). |
 | `--device=auto\|coreml\|cuda\|directml\|cpu` | `auto` | An explicit device that fails to initialise is an error (`model_load`). `auto` falls back to CPU. |
-| `--overlap=<0.0–0.95>` | `0.5` | Chunk overlap. Higher means smoother and slower. |
+| `--overlap=<0.0–0.95>` | `0.5` | Chunk overlap. Higher means smoother and slower. Chunks always share at least `n_fft` samples, so `0` means "minimum overlap", never abutting chunks. |
 | `--batch=<1–16>` | `1` | Chunks per inference call. |
 | `--denoise` | off | Averages `f(x)` and `−f(−x)`. Cleaner, 2× slower. |
 | `--bit-depth=32f\|24\|16` | `32f` | Output WAV sample format. |
 
 Bundled-model lookup order: `<exe dir>/../Resources/models/`, then
-`~/Library/Application Support/VoxSplit/models/`, then `<exe dir>/../../models/`
+`~/Library/Application Support/VoxSplit/models/`, then `<exe dir>/../../../models/`
 (the repo's `models/` when running from `engine/target/release`).
 
 Outputs (in `--out-dir`): `lead_vocals.wav`, `backing_vocals.wav`, and
@@ -42,17 +42,18 @@ when dropped on the DAW timeline.
 
 ## Events (stdout, JSON Lines)
 
-One JSON object per line, flushed immediately, each under 512 bytes (so a
-single `write` is atomic even if stdout and stderr share a pipe). Lines on
-stdout that don't start with `{` should be shown as log text, never treated
-as an error. stderr is free-form diagnostic text (ONNX Runtime warnings,
-panics).
+One JSON object per line, written with a single `write` and flushed
+immediately. Free-text `message` fields are truncated to 300 characters to
+keep lines short. If a frontend merges stdout and stderr into one pipe (JUCE
+does), any line that doesn't start with `{` is log text and must never be
+treated as an error. stderr is free-form diagnostic text (ONNX Runtime
+warnings, panics).
 
 | `event` | Fields | When |
 | --- | --- | --- |
 | `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
-| `start` | `version`, `device`, `stages`, `duration_sec`, `sample_rate`, `channels` | input decoded, models about to load |
-| `stage` | `stage` (`vocals`\|`karaoke`), `index` (1-based), `stages`, `model` | each stage begins |
+| `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*) | input decoded |
+| `stage` | `stage` (`vocals`\|`karaoke`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
 | `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1) | after each chunk (throttled to ≥0.5% steps) |
 | `log` | `level` (`info`\|`warn`), `message` | notable milestones |
 | `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
@@ -63,10 +64,10 @@ panics).
 Example run:
 
 ```json
-{"event":"start","version":"0.1.0","device":"coreml","stages":2,"duration_sec":213.4,"sample_rate":48000,"channels":2}
-{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2"}
+{"event":"start","version":"0.1.0","stages":2,"duration_sec":213.4,"sample_rate":48000,"channels":2}
+{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2","device":"coreml"}
 {"event":"progress","stage":"vocals","fraction":0.37,"overall":0.185}
-{"event":"stage","stage":"karaoke","index":2,"stages":2,"model":"UVR-MDX-NET Karaoke 2"}
+{"event":"stage","stage":"karaoke","index":2,"stages":2,"model":"UVR-MDX-NET Karaoke 2","device":"coreml"}
 {"event":"output","stem":"lead","path":"/Users/me/Music/VoxSplit/song/lead_vocals.wav"}
 {"event":"output","stem":"backing","path":"/Users/me/Music/VoxSplit/song/backing_vocals.wav"}
 {"event":"done","elapsed_sec":41.8}
@@ -84,6 +85,10 @@ Example run:
 | 5 | `inference` | ONNX Runtime failed during a run |
 | 6 | `write` | output directory or file couldn't be written |
 | 130 | — (`cancelled` event) | SIGTERM/SIGINT, or the parent process died |
+
+When `--device` is `auto` and an accelerator fails to initialise, the engine
+emits a `log` event (`level: "warn"`) and tries the next one. The `stage`
+event's `device` says what actually ran.
 
 ## Cancellation
 

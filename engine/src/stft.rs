@@ -22,7 +22,7 @@ pub struct Stft {
 
 impl Stft {
     pub fn new(n_fft: usize, hop: usize) -> Self {
-        assert!(n_fft % 2 == 0 && hop > 0 && hop <= n_fft);
+        assert!(n_fft.is_multiple_of(2) && hop > 0 && hop <= n_fft);
         let mut planner = RealFftPlanner::<f32>::new();
         let fwd = planner.plan_fft_forward(n_fft);
         let inv = planner.plan_fft_inverse(n_fft);
@@ -51,7 +51,10 @@ impl Stft {
     /// Forward transform. Output is frame-major: `out[t * bins + f]`.
     pub fn forward(&mut self, signal: &[f32]) -> Vec<Complex32> {
         let pad = self.n_fft / 2;
-        assert!(signal.len() > pad, "signal shorter than n_fft/2 cannot be reflect-padded");
+        assert!(
+            signal.len() > pad,
+            "signal shorter than n_fft/2 cannot be reflect-padded"
+        );
         let padded = reflect_pad(signal, pad);
         let frames = self.frames_for(signal.len());
         let bins = self.bins();
@@ -63,7 +66,11 @@ impl Stft {
                 *sample = padded[start + i] * self.window[i];
             }
             self.fwd
-                .process_with_scratch(&mut self.time_buf, &mut self.freq_buf, &mut self.scratch_fwd)
+                .process_with_scratch(
+                    &mut self.time_buf,
+                    &mut self.freq_buf,
+                    &mut self.scratch_fwd,
+                )
                 .expect("buffer sizes come from the planner");
             out[t * bins..(t + 1) * bins].copy_from_slice(&self.freq_buf);
         }
@@ -82,13 +89,18 @@ impl Stft {
         let norm = 1.0 / self.n_fft as f32;
 
         for t in 0..frames {
-            self.freq_buf.copy_from_slice(&spec[t * bins..(t + 1) * bins]);
+            self.freq_buf
+                .copy_from_slice(&spec[t * bins..(t + 1) * bins]);
             // A real signal's DC and Nyquist bins are real; torch.istft ignores
             // their imaginary parts, and realfft requires them to be zero.
             self.freq_buf[0].im = 0.0;
             self.freq_buf[bins - 1].im = 0.0;
             self.inv
-                .process_with_scratch(&mut self.freq_buf, &mut self.time_buf, &mut self.scratch_inv)
+                .process_with_scratch(
+                    &mut self.freq_buf,
+                    &mut self.time_buf,
+                    &mut self.scratch_inv,
+                )
                 .expect("buffer sizes come from the planner");
             let start = t * self.hop;
             for i in 0..self.n_fft {
@@ -121,7 +133,9 @@ pub fn symmetric_hann(n: usize) -> Vec<f32> {
         return vec![1.0];
     }
     (0..n)
-        .map(|i| (0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (n - 1) as f64).cos()) as f32)
+        .map(|i| {
+            (0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (n - 1) as f64).cos()) as f32
+        })
         .collect()
 }
 
@@ -151,7 +165,10 @@ mod tests {
 
     #[test]
     fn reflect_pad_matches_numpy() {
-        assert_eq!(reflect_pad(&[1.0, 2.0, 3.0, 4.0], 2), vec![3.0, 2.0, 1.0, 2.0, 3.0, 4.0, 3.0, 2.0]);
+        assert_eq!(
+            reflect_pad(&[1.0, 2.0, 3.0, 4.0], 2),
+            vec![3.0, 2.0, 1.0, 2.0, 3.0, 4.0, 3.0, 2.0]
+        );
     }
 
     #[test]
@@ -170,7 +187,11 @@ mod tests {
             let spec = stft.forward(&signal);
             let back = stft.inverse(&spec, frames);
             assert_eq!(back.len(), signal.len());
-            let max_err = signal.iter().zip(&back).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+            let max_err = signal
+                .iter()
+                .zip(&back)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0, f32::max);
             assert!(max_err < 1e-4, "n_fft={n_fft}: max error {max_err}");
         }
     }

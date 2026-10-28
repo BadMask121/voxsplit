@@ -26,11 +26,17 @@ pub struct Stereo {
 
 impl Stereo {
     pub fn zeros(len: usize) -> Self {
-        Self { l: vec![0.0; len], r: vec![0.0; len] }
+        Self {
+            l: vec![0.0; len],
+            r: vec![0.0; len],
+        }
     }
 
     pub fn with_capacity(len: usize) -> Self {
-        Self { l: Vec::with_capacity(len), r: Vec::with_capacity(len) }
+        Self {
+            l: Vec::with_capacity(len),
+            r: Vec::with_capacity(len),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -63,9 +69,16 @@ pub fn decode(path: &Path) -> Result<Decoded> {
         hint.with_extension(ext);
     }
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .context("unsupported or unrecognised audio format")?;
-    let track = format.default_track(TrackType::Audio).context("file has no audio track")?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .context("file has no audio track")?;
     let track_id = track.id;
     let params = track
         .codec_params
@@ -85,7 +98,9 @@ pub fn decode(path: &Path) -> Result<Decoded> {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
             Ok(None) => break,
-            Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                break;
+            }
             Err(e) => return Err(e).context("failed reading audio packets"),
         };
         if packet.track_id != track_id {
@@ -119,7 +134,11 @@ pub fn decode(path: &Path) -> Result<Decoded> {
     if audio.is_empty() {
         bail!("file decoded to zero samples");
     }
-    Ok(Decoded { audio, sample_rate, source_channels: channels as u16 })
+    Ok(Decoded {
+        audio,
+        sample_rate,
+        source_channels: channels as u16,
+    })
 }
 
 /// Resample a whole buffer; the result has exactly `round(len * to / from)` frames.
@@ -166,7 +185,12 @@ pub struct WavSink {
 }
 
 impl WavSink {
-    pub fn create(final_path: &Path, working_rate: u32, output_rate: u32, depth: BitDepth) -> Result<Self> {
+    pub fn create(
+        final_path: &Path,
+        working_rate: u32,
+        output_rate: u32,
+        depth: BitDepth,
+    ) -> Result<Self> {
         let partial = partial_path(final_path);
         let spec = hound::WavSpec {
             channels: 2,
@@ -186,7 +210,13 @@ impl WavSink {
         let resampler = (working_rate != output_rate)
             .then(|| StreamResampler::new(working_rate, output_rate))
             .transpose()?;
-        Ok(Self { writer: Some(writer), partial, final_path: final_path.to_path_buf(), depth, resampler })
+        Ok(Self {
+            writer: Some(writer),
+            partial,
+            final_path: final_path.to_path_buf(),
+            depth,
+            resampler,
+        })
     }
 
     pub fn write(&mut self, l: &[f32], r: &[f32]) -> Result<()> {
@@ -203,8 +233,12 @@ impl WavSink {
             rs.flush(&mut |l, r| write_frames(&mut writer, self.depth, l, r))?;
         }
         writer.finalize().context("failed to finalise WAV")?;
-        fs::rename(&self.partial, &self.final_path)
-            .with_context(|| format!("cannot move output into place at {}", self.final_path.display()))?;
+        fs::rename(&self.partial, &self.final_path).with_context(|| {
+            format!(
+                "cannot move output into place at {}",
+                self.final_path.display()
+            )
+        })?;
         Ok(self.final_path.clone())
     }
 }
@@ -223,18 +257,30 @@ pub fn partial_path(final_path: &Path) -> PathBuf {
     final_path.with_file_name(name)
 }
 
-fn write_frames(writer: &mut hound::WavWriter<BufWriter<File>>, depth: BitDepth, l: &[f32], r: &[f32]) -> Result<()> {
+fn write_frames(
+    writer: &mut hound::WavWriter<BufWriter<File>>,
+    depth: BitDepth,
+    l: &[f32],
+    r: &[f32],
+) -> Result<()> {
     for (&a, &b) in l.iter().zip(r) {
         for s in [a, b] {
             match depth {
                 BitDepth::F32 => writer.write_sample(s)?,
-                BitDepth::I24 => writer.write_sample((s.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32)?,
-                BitDepth::I16 => writer.write_sample((s.clamp(-1.0, 1.0) * 32_767.0).round() as i16)?,
+                BitDepth::I24 => {
+                    writer.write_sample((s.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32)?
+                }
+                BitDepth::I16 => {
+                    writer.write_sample((s.clamp(-1.0, 1.0) * 32_767.0).round() as i16)?
+                }
             }
         }
     }
     Ok(())
 }
+
+/// Receives resampled `(left, right)` frames.
+type Emit<'a> = dyn FnMut(&[f32], &[f32]) -> Result<()> + 'a;
 
 /// Chunked resampler that trims rubato's start-up delay and pads the tail so
 /// the output has exactly `round(input_len * ratio)` frames.
@@ -267,7 +313,7 @@ impl StreamResampler {
         })
     }
 
-    fn push(&mut self, l: &[f32], r: &[f32], emit: &mut dyn FnMut(&[f32], &[f32]) -> Result<()>) -> Result<()> {
+    fn push(&mut self, l: &[f32], r: &[f32], emit: &mut Emit<'_>) -> Result<()> {
         self.total_in += l.len();
         self.pending[0].extend_from_slice(l);
         self.pending[1].extend_from_slice(r);
@@ -277,7 +323,7 @@ impl StreamResampler {
         Ok(())
     }
 
-    fn flush(&mut self, emit: &mut dyn FnMut(&[f32], &[f32]) -> Result<()>) -> Result<()> {
+    fn flush(&mut self, emit: &mut Emit<'_>) -> Result<()> {
         let want = expected_len(self.total_in, self.from, self.to);
         while self.total_out < want {
             let need = self.rs.input_frames_next();
@@ -289,7 +335,7 @@ impl StreamResampler {
         Ok(())
     }
 
-    fn process_one(&mut self, limit: usize, emit: &mut dyn FnMut(&[f32], &[f32]) -> Result<()>) -> Result<()> {
+    fn process_one(&mut self, limit: usize, emit: &mut Emit<'_>) -> Result<()> {
         let need = self.rs.input_frames_next();
         for ch in 0..2 {
             self.in_chunk[ch].clear();
@@ -304,7 +350,10 @@ impl StreamResampler {
         let available = produced - skip;
         let take = available.min(limit.saturating_sub(self.total_out));
         if take > 0 {
-            emit(&self.out_chunk[0][skip..skip + take], &self.out_chunk[1][skip..skip + take])?;
+            emit(
+                &self.out_chunk[0][skip..skip + take],
+                &self.out_chunk[1][skip..skip + take],
+            )?;
             self.total_out += take;
         }
         Ok(())
@@ -316,9 +365,13 @@ mod tests {
     use super::*;
 
     fn sine(len: usize, rate: u32, hz: f32) -> Stereo {
-        let l: Vec<f32> =
-            (0..len).map(|i| 0.5 * (2.0 * std::f32::consts::PI * hz * i as f32 / rate as f32).sin()).collect();
-        Stereo { r: l.iter().map(|s| -s).collect(), l }
+        let l: Vec<f32> = (0..len)
+            .map(|i| 0.5 * (2.0 * std::f32::consts::PI * hz * i as f32 / rate as f32).sin())
+            .collect();
+        Stereo {
+            r: l.iter().map(|s| -s).collect(),
+            l,
+        }
     }
 
     #[test]
@@ -329,7 +382,9 @@ mod tests {
         let up = resample(&down, 44_100, 48_000).unwrap();
         assert_eq!(up.len(), 48_000);
         // Ignore the edges, where the band-limited filter rings.
-        let err = (2_000..46_000).map(|i| (input.l[i] - up.l[i]).abs()).fold(0.0, f32::max);
+        let err = (2_000..46_000)
+            .map(|i| (input.l[i] - up.l[i]).abs())
+            .fold(0.0, f32::max);
         assert!(err < 1e-2, "roundtrip error {err}");
     }
 
@@ -348,12 +403,17 @@ mod tests {
 
         let reader = hound::WavReader::open(&path).unwrap();
         assert_eq!(reader.spec().sample_rate, 48_000);
-        assert_eq!(reader.duration() as usize, expected_len(input.len(), 44_100, 48_000));
+        assert_eq!(
+            reader.duration() as usize,
+            expected_len(input.len(), 44_100, 48_000)
+        );
 
         // Compare the streamed result with the whole-buffer resampler.
         let samples: Vec<f32> = reader.into_samples::<f32>().map(Result::unwrap).collect();
         let reference = resample(&input, 44_100, 48_000).unwrap();
-        let err = (2_000..90_000).map(|i| (samples[2 * i] - reference.l[i]).abs()).fold(0.0, f32::max);
+        let err = (2_000..90_000)
+            .map(|i| (samples[2 * i] - reference.l[i]).abs())
+            .fold(0.0, f32::max);
         assert!(err < 1e-3, "streamed vs whole-buffer error {err}");
     }
 
@@ -373,7 +433,12 @@ mod tests {
     fn decode_wav_roundtrip_and_mono_upmix() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mono.wav");
-        let spec = hound::WavSpec { channels: 1, sample_rate: 22_050, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 22_050,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
         let mut w = hound::WavWriter::create(&path, spec).unwrap();
         for i in 0..1_000 {
             w.write_sample(((i % 100) as i16 - 50) * 300).unwrap();

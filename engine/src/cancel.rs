@@ -51,6 +51,10 @@ impl Cancel {
     }
 
     pub fn check(&self) -> Result<(), EngineError> {
-        if self.is_cancelled() { Err(EngineError::Cancelled) } else { Ok(()) }
+        if self.is_cancelled() {
+            Err(EngineError::Cancelled)
+        } else {
+            Ok(())
+        }
     }
 }

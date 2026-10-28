@@ -33,3 +33,14 @@ commercial distribution of bundles that embed them.
 **Platform.** v1 targets Apple Silicon macOS (CoreML on the Neural Engine and
 GPU). Windows code paths (DirectML, CUDA) are compiled behind `cfg` gates but
 not built or tested yet.
+
+**Measured performance** (M2 Max, 3:10 stereo 44.1 kHz FLAC, both stages, overlap 0.5):
+
+| Device | Wall time | Peak RAM | Stems vs CPU reference |
+| --- | --- | --- | --- |
+| CoreML (`auto`) | 13.1 s | 0.46 GB | 56–67 dB SNR (inaudible) |
+| CPU (`--device=cpu`) | 89.6 s | ~4.5 GB | reference |
+
+Null test: `lead + backing + instrumental` reconstructs the input at 162 dB
+SNR (float precision). Run `cargo run --release --example stem_check` to
+repeat both checks on your own files.

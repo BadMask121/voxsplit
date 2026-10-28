@@ -3,8 +3,11 @@
 
 pub mod audio;
 pub mod cancel;
+pub mod device;
 pub mod error;
 pub mod events;
 pub mod model;
+pub mod onnx;
+pub mod pipeline;
 pub mod separator;
 pub mod stft;

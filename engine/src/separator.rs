@@ -27,7 +27,11 @@ pub struct SeparateOptions {
 
 impl Default for SeparateOptions {
     fn default() -> Self {
-        Self { overlap: 0.5, batch: 1, denoise: false }
+        Self {
+            overlap: 0.5,
+            batch: 1,
+            denoise: false,
+        }
     }
 }
 
@@ -53,7 +57,12 @@ impl Geometry {
         // Chunks always share at least n_fft samples (UVR's default step).
         // Abutting chunks would expose each chunk's STFT edge artefacts as clicks.
         let step = (((1.0 - overlap) * chunk as f32) as usize).clamp(1, chunk - cfg.n_fft);
-        Self { chunk, trim, step, padded_len: trim + len + pad }
+        Self {
+            chunk,
+            trim,
+            step,
+            padded_len: trim + len + pad,
+        }
     }
 }
 
@@ -109,7 +118,12 @@ pub fn separate(
     Ok(())
 }
 
-fn run_model(model: &mut dyn SpectrogramModel, input: &[f32], batch: usize, denoise: bool) -> Result<Vec<f32>, EngineError> {
+fn run_model(
+    model: &mut dyn SpectrogramModel,
+    input: &[f32],
+    batch: usize,
+    denoise: bool,
+) -> Result<Vec<f32>, EngineError> {
     let mut out = model.run(input, batch).map_err(EngineError::Inference)?;
     if denoise {
         let negated: Vec<f32> = input.iter().map(|v| -v).collect();
@@ -189,7 +203,15 @@ struct Accumulator {
 
 impl Accumulator {
     fn new(chunk: usize, trim: usize, len: usize) -> Self {
-        Self { base: 0, sum: Stereo::zeros(chunk), weight: vec![0.0; chunk], trim, len, out_l: Vec::new(), out_r: Vec::new() }
+        Self {
+            base: 0,
+            sum: Stereo::zeros(chunk),
+            weight: vec![0.0; chunk],
+            trim,
+            len,
+            out_l: Vec::new(),
+            out_r: Vec::new(),
+        }
     }
 
     fn add(&mut self, start: usize, wave: &Stereo, weights: &[f32]) {
@@ -228,7 +250,11 @@ impl Accumulator {
             }
             first_out.get_or_insert(pos - self.trim);
             let w = self.weight[i];
-            let (l, r) = if w > 1e-8 { (self.sum.l[i] / w, self.sum.r[i] / w) } else { (0.0, 0.0) };
+            let (l, r) = if w > 1e-8 {
+                (self.sum.l[i] / w, self.sum.r[i] / w)
+            } else {
+                (0.0, 0.0)
+            };
             self.out_l.push(l);
             self.out_r.push(r);
         }
@@ -289,7 +315,10 @@ mod tests {
                     + 0.2 * (2.0 * std::f32::consts::PI * (1_500.0 + 2_000.0 * t) * t).sin())
             })
             .collect();
-        Stereo { r: l.iter().map(|s| 0.5 * s).collect(), l }
+        Stereo {
+            r: l.iter().map(|s| 0.5 * s).collect(),
+            l,
+        }
     }
 
     fn collect(cfg: &ModelConfig, input: &Stereo, opts: SeparateOptions) -> (Stereo, usize, usize) {
@@ -307,7 +336,11 @@ mod tests {
                 Ok(())
             },
             |start, l, r| {
-                assert_eq!(start, out.len(), "sink must receive contiguous, in-order slices");
+                assert_eq!(
+                    start,
+                    out.len(),
+                    "sink must receive contiguous, in-order slices"
+                );
                 out.extend(l, r);
                 Ok(())
             },
@@ -322,7 +355,14 @@ mod tests {
         for &overlap in &[0.0, 0.25, 0.5, 0.75] {
             for &len in &[20_000usize, 33_333, 8_064 * 3 + 1] {
                 let input = band_limited_signal(len);
-                let (out, chunks, total) = collect(&cfg, &input, SeparateOptions { overlap, ..Default::default() });
+                let (out, chunks, total) = collect(
+                    &cfg,
+                    &input,
+                    SeparateOptions {
+                        overlap,
+                        ..Default::default()
+                    },
+                );
                 assert_eq!(out.len(), len, "overlap {overlap}, len {len}");
                 assert_eq!(chunks, total);
                 assert_eq!(total, chunk_count(&cfg, len, overlap));
@@ -333,7 +373,10 @@ mod tests {
                     .chain(input.r.iter().zip(&out.r))
                     .map(|(a, b)| (a - b).abs())
                     .fold(0.0, f32::max);
-                assert!(max_err < 1e-3, "overlap {overlap}, len {len}: max error {max_err}");
+                assert!(
+                    max_err < 1e-3,
+                    "overlap {overlap}, len {len}: max error {max_err}"
+                );
             }
         }
     }
@@ -344,10 +387,28 @@ mod tests {
         // chunk sees the same passthrough, so the first difference must stay smooth.
         let cfg = small_cfg();
         let input = band_limited_signal(40_000);
-        let (out, ..) = collect(&cfg, &input, SeparateOptions { overlap: 0.5, ..Default::default() });
-        let max_in_step = input.l.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max);
-        let max_out_step = out.l.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max);
-        assert!(max_out_step <= max_in_step * 1.01 + 1e-4, "out step {max_out_step} vs in {max_in_step}");
+        let (out, ..) = collect(
+            &cfg,
+            &input,
+            SeparateOptions {
+                overlap: 0.5,
+                ..Default::default()
+            },
+        );
+        let max_in_step = input
+            .l
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f32::max);
+        let max_out_step = out
+            .l
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f32::max);
+        assert!(
+            max_out_step <= max_in_step * 1.01 + 1e-4,
+            "out step {max_out_step} vs in {max_in_step}"
+        );
     }
 
     #[test]
@@ -355,9 +416,24 @@ mod tests {
         let cfg = small_cfg();
         let input = band_limited_signal(30_000);
         let (a, ..) = collect(&cfg, &input, SeparateOptions::default());
-        let (b, ..) = collect(&cfg, &input, SeparateOptions { batch: 3, denoise: true, ..Default::default() });
-        let max_diff = a.l.iter().zip(&b.l).map(|(x, y)| (x - y).abs()).fold(0.0, f32::max);
-        assert!(max_diff < 1e-5, "batch/denoise changed output by {max_diff}");
+        let (b, ..) = collect(
+            &cfg,
+            &input,
+            SeparateOptions {
+                batch: 3,
+                denoise: true,
+                ..Default::default()
+            },
+        );
+        let max_diff =
+            a.l.iter()
+                .zip(&b.l)
+                .map(|(x, y)| (x - y).abs())
+                .fold(0.0, f32::max);
+        assert!(
+            max_diff < 1e-5,
+            "batch/denoise changed output by {max_diff}"
+        );
     }
 
     #[test]
@@ -372,7 +448,11 @@ mod tests {
             SeparateOptions::default(),
             |done, _| {
                 seen = done;
-                if done == 2 { Err(EngineError::Cancelled) } else { Ok(()) }
+                if done == 2 {
+                    Err(EngineError::Cancelled)
+                } else {
+                    Ok(())
+                }
             },
             |_, _, _| Ok(()),
         );
@@ -382,7 +462,13 @@ mod tests {
 
     #[test]
     fn mdx_geometry_chunk_counts() {
-        let kim = ModelConfig { n_fft: 7680, hop: 1024, dim_f: 3072, dim_t: 256, ..small_cfg() };
+        let kim = ModelConfig {
+            n_fft: 7680,
+            hop: 1024,
+            dim_f: 3072,
+            dim_t: 256,
+            ..small_cfg()
+        };
         assert_eq!(kim.chunk_len(), 261_120);
         // 3:30 at 44.1 kHz with 50% overlap.
         let n = chunk_count(&kim, 44_100 * 210, 0.5);
