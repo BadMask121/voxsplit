@@ -60,6 +60,10 @@ struct ContentView: View {
         .padding(.bottom, 22)
         .frame(width: 540)
         .background(Theme.background)
+        // Run under the hidden title bar (the padding above clears the traffic lights);
+        // without this the title bar strip shows the window's default grey.
+        .ignoresSafeArea()
+        .background(WindowBackground())
         .preferredColorScheme(.dark)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.audio]) { result in
             if case .success(let url) = result { choose(url) }
