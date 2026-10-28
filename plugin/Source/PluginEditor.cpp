@@ -11,6 +11,26 @@ namespace
 
     juce::String percent (float f) { return juce::String (juce::roundToInt (f * 100.0f)) + "%"; }
 
+    /** "about 25 s", "about 2 min 10 s" — rounded so the number doesn't flicker. */
+    juce::String about (double seconds)
+    {
+        if (seconds < 60.0)
+            return "about " + juce::String (juce::jmax (5, (int) std::ceil (seconds / 5.0) * 5)) + " s";
+        const auto rounded = (int) std::round (seconds / 10.0) * 10;
+        const auto secs = rounded % 60;
+        return "about " + juce::String (rounded / 60) + " min" + (secs > 0 ? " " + juce::String (secs) + " s" : juce::String());
+    }
+
+    /** Countdown while running: "1:05 left", "25 s left". */
+    juce::String timeLeft (double seconds)
+    {
+        if (seconds < 0.0) return {};
+        if (seconds < 5.0) return "a few seconds left";
+        if (seconds < 60.0) return juce::String ((int) std::ceil (seconds / 5.0) * 5) + " s left";
+        const auto s = (int) std::round (seconds);
+        return juce::String (s / 60) + ":" + juce::String (s % 60).paddedLeft ('0', 2) + " left";
+    }
+
     juce::String deviceLabel (const juce::String& d)
     {
         if (d == "coreml")   return "CoreML";
@@ -35,6 +55,13 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
 
     addAndMakeVisible (logToggle);
     logToggle.onClick = [this] { toggleLog(); };
+
+    addAndMakeVisible (quality);
+    quality.setSelected (processor.getQuality() == SeparationJob::Quality::fast ? 1 : 0, false);
+    quality.onChange = [this] (int index) {
+        processor.setQuality (index == 1 ? SeparationJob::Quality::fast : SeparationJob::Quality::best);
+        sync (false);
+    };
 
     addAndMakeVisible (progress);
     progress.setAlpha (0.0f);
@@ -99,7 +126,7 @@ void VoxSplitEditor::primaryClicked()
 
     preview.stop(); // the stems being previewed are about to be replaced
     rows.clear();
-    job.start (input, SeparationJob::defaultOutputFolder (input));
+    job.start (input, SeparationJob::defaultOutputFolder (input), processor.getQuality());
 }
 
 void VoxSplitEditor::toggleLog()
@@ -143,7 +170,7 @@ bool VoxSplitEditor::keyPressed (const juce::KeyPress& key)
 
 void VoxSplitEditor::tick()
 {
-    if (job.version() != seenVersion)
+    if (job.version() != seenVersion || processor.getEstimate()->version != seenEstimate)
         sync (false);
 
     if (progressAlpha.tick (nowMs()))
@@ -159,11 +186,13 @@ void VoxSplitEditor::tick()
 void VoxSplitEditor::sync (bool initial)
 {
     seenVersion = job.version();
+    seenEstimate = processor.getEstimate()->version;
     const auto s = job.snapshot();
     const bool active = s.phase == Phase::preparing || s.phase == Phase::running;
     const bool hasInput = processor.getInputFile().existsAsFile();
 
     dropZone.setEnabled (! active);
+    quality.setEnabled (! active);
     primary.setEnabled (active || hasInput);
     primary.setLabel (active ? "Cancel" : (s.phase == Phase::failed ? "Try again" : "Separate"));
     primary.setStyle (active ? PressableButton::Style::ghost : PressableButton::Style::primary);
@@ -179,12 +208,17 @@ void VoxSplitEditor::sync (bool initial)
     switch (s.phase)
     {
         case Phase::preparing:
-            progress.setState (ProgressStrip::Mode::indeterminate, 0.0f, "Loading models", "");
+            progress.setState (ProgressStrip::Mode::indeterminate, 0.0f, "Loading models",
+                               s.etaSec > 0.0 ? about (s.etaSec) + " in total" : juce::String());
             break;
         case Phase::running:
+        {
+            const auto dot = juce::String ("   ") + juce::String::fromUTF8 ("\xc2\xb7") + "   ";
+            const auto left = timeLeft (s.etaSec);
             progress.setState (ProgressStrip::Mode::determinate, s.overall, stageText,
-                               stageCount + "   " + juce::String::fromUTF8 ("\xc2\xb7") + "   " + percent (s.overall));
+                               stageCount + dot + percent (s.overall) + (left.isNotEmpty() ? dot + left : juce::String()));
             break;
+        }
         case Phase::finished:
             progress.setState (ProgressStrip::Mode::done, 1.0f, "Done",
                                s.elapsedSec > 0.0 ? juce::String (s.elapsedSec, 1) + " s on " + deviceLabel (device) : juce::String());
@@ -211,7 +245,17 @@ void VoxSplitEditor::sync (bool initial)
         case Phase::failed:    status = s.error; statusColour = colours::danger; break;
         case Phase::cancelled: status = "Cancelled. Nothing was saved."; break;
         case Phase::finished:  status = "Saved to Music / VoxSplit / " + s.input.getFileNameWithoutExtension(); break;
-        case Phase::idle:      status = hasInput ? "Stems are saved to Music / VoxSplit" : ""; break;
+        case Phase::idle:
+        {
+            const bool best = processor.getQuality() == SeparationJob::Quality::best;
+            const auto& estimate = *processor.getEstimate();
+            const double seconds = best ? estimate.bestSec.load() : estimate.fastSec.load();
+            status = ! hasInput   ? juce::String()
+                   : seconds > 0.0 ? juce::String (best ? "Best" : "Fast") + " takes " + about (seconds)
+                                           + (best ? " (cleanest split)" : "")
+                                   : juce::String::fromUTF8 ("Estimating time\xe2\x80\xa6");
+            break;
+        }
         case Phase::preparing: case Phase::running: status = ""; break;
     }
 
@@ -266,7 +310,8 @@ void VoxSplitEditor::resized()
 
     auto actions = area.removeFromTop (36);
     primary.setBounds (actions.removeFromLeft (128));
-    statusArea = actions.withTrimmedLeft (16);
+    quality.setBounds (actions.removeFromRight (124).reduced (0, 2));
+    statusArea = actions.withTrimmedLeft (16).withTrimmedRight (12);
     area.removeFromTop (20);
 
     progress.setBounds (area.removeFromTop (26));

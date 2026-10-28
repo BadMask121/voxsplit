@@ -19,12 +19,13 @@ use ort::environment::Environment;
 
 use crate::audio::{self, BitDepth, Stereo, WavSink};
 use crate::cancel::Cancel;
-use crate::device::Device;
+use crate::device::{self, Device};
 use crate::error::EngineError;
 use crate::events::{self, Event, Level, StageName, Stem};
 use crate::model::{ModelConfig, SpectrogramModel};
 use crate::onnx::OrtModel;
-use crate::separator::{self, SeparateOptions};
+use crate::separator::{self, SeparateOptions, chunk_count};
+use crate::timing::{Timing, TimingStore};
 
 pub struct Job {
     pub input: PathBuf,
@@ -41,15 +42,44 @@ pub struct Job {
     pub separate: SeparateOptions,
     pub bit_depth: BitDepth,
     pub coreml_cache: Option<PathBuf>,
+    /// Where learned per-model timings live (`None`: don't learn).
+    pub timings: Option<PathBuf>,
 }
 
 impl Job {
     fn options_for(&self, cfg: &ModelConfig) -> SeparateOptions {
         SeparateOptions {
-            overlap: self.overlap.or(cfg.default_overlap).unwrap_or(0.5),
+            overlap: overlap_for(self.overlap, cfg),
             ..self.separate
         }
     }
+}
+
+pub fn overlap_for(requested: Option<f32>, cfg: &ModelConfig) -> f32 {
+    requested.or(cfg.default_overlap).unwrap_or(0.5)
+}
+
+/// Expected seconds per stage: the vocal stage (if any), then one entry per
+/// karaoke pass. A model's load time is counted on its first stage only.
+pub fn stage_estimates(
+    timings: &TimingStore,
+    device: &str,
+    vocal: Option<&ModelConfig>,
+    karaoke: &ModelConfig,
+    passes: u8,
+    overlap: Option<f32>,
+    samples: usize,
+) -> Vec<f64> {
+    let mut estimates = Vec::new();
+    if let Some(cfg) = vocal {
+        let t = timings.get(cfg, device);
+        estimates.push(t.stage_sec(cfg, samples, overlap_for(overlap, cfg), true));
+    }
+    let t = timings.get(karaoke, device);
+    for pass in 0..passes.max(1) {
+        estimates.push(t.stage_sec(karaoke, samples, overlap_for(overlap, karaoke), pass == 0));
+    }
+    estimates
 }
 
 pub fn run(
@@ -81,16 +111,29 @@ pub fn run(
     let karaoke_stage = if vocal_cfg.is_some() { 2 } else { 1 };
     let stages = karaoke_stage - 1 + passes;
     let source_rate = decoded.sample_rate;
+    let work_rate = karaoke_cfg.sample_rate;
+    let work_len = (decoded.audio.len() as f64 * work_rate as f64 / source_rate as f64) as usize;
+
+    let mut timings = TimingStore::open(job.timings.clone());
+    let mut estimates = stage_estimates(
+        &timings,
+        device::expected_name(job.device),
+        vocal_cfg.as_ref(),
+        &karaoke_cfg,
+        passes,
+        job.overlap,
+        work_len,
+    );
     events::emit(&Event::Start {
         version: events::VERSION,
         stages,
         duration_sec: decoded.audio.len() as f64 / source_rate as f64,
         sample_rate: source_rate,
         channels: decoded.source_channels,
+        estimate_sec: estimates.iter().sum(),
     });
     cancel.check()?;
 
-    let work_rate = karaoke_cfg.sample_rate;
     let mix =
         audio::resample(&decoded.audio, source_rate, work_rate).map_err(EngineError::Internal)?;
     drop(decoded);
@@ -113,7 +156,9 @@ pub fn run(
     // Stage 1: mix → vocals (kept in memory; stage 2 needs all of it).
     let vocals = match &vocal_cfg {
         Some(cfg) => {
+            let loading = Instant::now();
             let mut model = load(env, job, &job.vocal_model, cfg)?;
+            let load_sec = loading.elapsed().as_secs_f64();
             events::emit(&Event::Stage {
                 stage: StageName::Vocals,
                 index: 1,
@@ -121,14 +166,22 @@ pub fn run(
                 model: &cfg.name,
                 device: model.1,
             });
+            let opts = job.options_for(cfg);
+            let chunks = chunk_count(cfg, mix.len(), opts.overlap);
+            let mut progress = Progress::new(
+                StageName::Vocals,
+                0,
+                stages,
+                chunks as f64 * timings.get(cfg, model.1).chunk_sec,
+                estimates[1..].iter().sum(),
+            );
             let mut vocals = Stereo::with_capacity(mix.len());
-            let mut progress = Progress::new(StageName::Vocals, 0, stages);
             let comp = cfg.compensate;
             separator::separate(
                 &mut model.0,
                 cfg,
                 &mix,
-                job.options_for(cfg),
+                opts,
                 |done, total| {
                     cancel.check()?;
                     progress.update(done, total);
@@ -148,6 +201,14 @@ pub fn run(
                     Ok(())
                 },
             )?;
+            timings.record(
+                cfg,
+                model.1,
+                Timing {
+                    load_sec,
+                    chunk_sec: progress.elapsed() / chunks.max(1) as f64,
+                },
+            );
             vocals
         }
         None => mix,
@@ -156,9 +217,18 @@ pub fn run(
 
     // Stage 2 and refinement passes, with one karaoke session for all of them.
     // Stage 1's session was dropped above, so only one model is resident at a time.
+    let loading = Instant::now();
     let mut model = load(env, job, &job.karaoke_model, &karaoke_cfg)?;
+    let load_sec = loading.elapsed().as_secs_f64();
     let comp = karaoke_cfg.compensate;
     let karaoke_opts = job.options_for(&karaoke_cfg);
+    let chunks = chunk_count(&karaoke_cfg, vocals.len(), karaoke_opts.overlap);
+    let chunk_sec = timings.get(&karaoke_cfg, model.1).chunk_sec;
+    // The remaining passes, re-estimated for the device that actually loaded.
+    for e in estimates.iter_mut().skip(karaoke_stage as usize - 1) {
+        *e = chunks as f64 * chunk_sec;
+    }
+    let mut inference_sec = 0.0;
     // MDX karaoke models output the backing side; RoFormer karaoke models output
     // the lead itself, so the backing they find is the current lead minus it.
     let primary_is_lead = karaoke_cfg.primary_is_lead();
@@ -178,7 +248,13 @@ pub fn run(
             model: &karaoke_cfg.name,
             device: model.1,
         });
-        let mut progress = Progress::new(stage, index - 1, stages);
+        let mut progress = Progress::new(
+            stage,
+            index - 1,
+            stages,
+            chunks as f64 * chunk_sec,
+            estimates[index as usize..].iter().sum(),
+        );
         let mut found = Stereo::with_capacity(lead_audio.len());
         separator::separate(
             &mut model.0,
@@ -204,6 +280,7 @@ pub fn run(
                 Ok(())
             },
         )?;
+        inference_sec += progress.elapsed();
         // Move what this pass found from the lead to the backing stem.
         for (channel, (lead_ch, backing_ch)) in [
             (&found.l, (&mut lead_audio.l, &mut backing_audio.l)),
@@ -218,6 +295,14 @@ pub fn run(
         }
         cancel.check()?;
     }
+    timings.record(
+        &karaoke_cfg,
+        model.1,
+        Timing {
+            load_sec,
+            chunk_sec: inference_sec / (chunks.max(1) * passes as usize) as f64,
+        },
+    );
     lead.write(&lead_audio.l, &lead_audio.r)
         .map_err(EngineError::Write)?;
     backing
@@ -234,6 +319,7 @@ pub fn run(
             inst.finish().map_err(EngineError::Write)?,
         ));
     }
+    timings.save();
     for (stem, path) in &outputs {
         events::emit(&Event::Output {
             stem: *stem,
@@ -268,22 +354,49 @@ fn load(
     )
 }
 
-/// Emits `progress` events, throttled to 0.5% steps.
+/// Emits `progress` events (throttled to 0.5% steps) with a time-left estimate.
 struct Progress {
     stage: StageName,
     index: u8,
     stages: u8,
     last: f32,
+    started: Instant,
+    /// Expected seconds for this stage's inference, before any is measured.
+    estimate: f64,
+    /// Expected seconds for every later stage.
+    after: f64,
 }
 
 impl Progress {
-    fn new(stage: StageName, index: u8, stages: u8) -> Self {
+    fn new(stage: StageName, index: u8, stages: u8, estimate: f64, after: f64) -> Self {
         Self {
             stage,
             index,
             stages,
             last: -1.0,
+            started: Instant::now(),
+            estimate,
+            after,
         }
+    }
+
+    fn elapsed(&self) -> f64 {
+        self.started.elapsed().as_secs_f64()
+    }
+
+    /// Seconds left: blends from the prior estimate to the measured rate over the
+    /// first quarter of the stage, so early, noisy chunks don't swing it.
+    fn eta(&self, fraction: f64) -> f64 {
+        let elapsed = self.elapsed();
+        let from_estimate = (self.estimate - elapsed).max(0.0);
+        let current = if fraction > 0.0 {
+            let measured = elapsed / fraction * (1.0 - fraction);
+            let weight = (fraction / 0.25).min(1.0);
+            weight * measured + (1.0 - weight) * from_estimate
+        } else {
+            from_estimate
+        };
+        current + self.after
     }
 
     fn update(&mut self, done: usize, total: usize) {
@@ -295,6 +408,7 @@ impl Progress {
                 stage: self.stage,
                 fraction,
                 overall,
+                eta_sec: self.eta(fraction as f64),
             });
         }
     }

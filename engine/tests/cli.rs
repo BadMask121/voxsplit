@@ -118,3 +118,40 @@ fn quality_picks_the_karaoke_model() {
         assert!(message.contains(model), "{quality}: {message}");
     }
 }
+
+#[test]
+fn estimate_reports_both_qualities_from_the_header() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("ten seconds.wav");
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: 48_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut w = hound::WavWriter::create(&input, spec).unwrap();
+    for _ in 0..48_000 * 10 * 2 {
+        w.write_sample(0i16).unwrap();
+    }
+    w.finalize().unwrap();
+
+    let models = concat!(env!("CARGO_MANIFEST_DIR"), "/../models");
+    let out = engine(&[
+        "estimate",
+        &format!("--input={}", input.display()),
+        &format!("--models-dir={models}"),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let ev = &events(&out)[0];
+    assert_eq!(ev["event"], "estimate");
+    assert!((ev["duration_sec"].as_f64().unwrap() - 10.0).abs() < 0.05);
+    let (best, fast) = (
+        ev["best_sec"].as_f64().unwrap(),
+        ev["fast_sec"].as_f64().unwrap(),
+    );
+    assert!(best > fast && fast > 0.0, "best {best} fast {fast}");
+}

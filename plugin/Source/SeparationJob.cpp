@@ -30,12 +30,47 @@ juce::File SeparationJob::defaultOutputFolder (const juce::File& input)
         .getChildFile (input.getFileNameWithoutExtension());
 }
 
+void SeparationJob::requestEstimate (const juce::File& input, std::shared_ptr<Estimate> into,
+                                     const EngineLocation& loc)
+{
+    into->bestSec = -1.0;
+    into->fastSec = -1.0;
+    const auto ticket = ++into->version;
+
+    // The lambda owns a reference to the result, so it stays valid even if the
+    // plugin is closed before the engine answers.
+    juce::Thread::launch ([input, into, ticket, loc] {
+        if (! loc.isValid())
+            return;
+
+        juce::ChildProcess child;
+        const juce::StringArray args { loc.engine.getFullPathName(), "estimate",
+                                       "--input=" + input.getFullPathName(),
+                                       "--models-dir=" + loc.modelsDir.getFullPathName() };
+        if (! child.start (args, juce::ChildProcess::wantStdOut))
+            return;
+
+        const auto output = child.readAllProcessOutput();
+        for (const auto& line : juce::StringArray::fromLines (output))
+        {
+            const auto json = juce::JSON::parse (line);
+            if (json.getProperty ("event", {}).toString() == "estimate" && into->version == ticket)
+            {
+                into->bestSec = (double) json.getProperty ("best_sec", -1.0);
+                into->fastSec = (double) json.getProperty ("fast_sec", -1.0);
+                ++into->version;
+            }
+        }
+    });
+}
+
 bool SeparationJob::isActive() const
 {
     return isThreadRunning();
 }
 
-bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, const EngineLocation& loc)
+bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, Quality quality,
+                           const EngineLocation& loc)
 {
     if (isThreadRunning())
         return false;
@@ -64,8 +99,8 @@ bool SeparationJob::start (const juce::File& input, const juce::File& outputFold
     args.add ("separate");
     args.add ("--input=" + input.getFullPathName());
     args.add ("--out-dir=" + outDir.getFullPathName());
-    args.add ("--vocal-model=" + loc.vocalModel.getFullPathName());
-    args.add ("--karaoke-model=" + loc.karaokeModel.getFullPathName());
+    args.add ("--models-dir=" + loc.modelsDir.getFullPathName());
+    args.add (quality == Quality::best ? "--quality=best" : "--quality=fast");
 
     cancelRequested = false;
     sawDone = sawCancelled = false;
@@ -232,6 +267,7 @@ void SeparationJob::handleLine (const juce::String& line)
         update ([&] (Snapshot& s) {
             s.stages = (int) json.getProperty ("stages", 2);
             s.durationSec = (double) json.getProperty ("duration_sec", 0.0);
+            s.etaSec = (double) json.getProperty ("estimate_sec", -1.0);
         });
     }
     else if (event == "stage")
@@ -253,6 +289,7 @@ void SeparationJob::handleLine (const juce::String& line)
         update ([&] (Snapshot& s) {
             s.fraction = (float) (double) json.getProperty ("fraction", 0.0);
             s.overall = (float) (double) json.getProperty ("overall", 0.0);
+            s.etaSec = (double) json.getProperty ("eta_sec", s.etaSec);
         });
     }
     else if (event == "log")

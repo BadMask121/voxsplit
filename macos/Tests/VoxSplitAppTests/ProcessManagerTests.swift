@@ -10,7 +10,7 @@ private nonisolated let repo = URL(filePath: #filePath)
 private nonisolated let engine = repo.appending(path: "engine/target/release/voxsplit-engine")
 private nonisolated let models = repo.appending(path: "models", directoryHint: .isDirectory)
 private nonisolated let engineIsBuilt = FileManager.default.isExecutableFile(atPath: engine.path(percentEncoded: false))
-    && FileManager.default.fileExists(atPath: models.appending(path: "Kim_Vocal_2.onnx").path(percentEncoded: false))
+    && FileManager.default.fileExists(atPath: models.appending(path: "BS_Roformer_Karaoke.onnx").path(percentEncoded: false))
 
 @Suite(.enabled(if: engineIsBuilt, "build the engine and fetch models first"), .serialized)
 struct ProcessManagerTests {
@@ -45,21 +45,36 @@ struct ProcessManagerTests {
         #expect(manager.inputDetails.contains("48 kHz"))
     }
 
+    @Test func `choosing a file estimates both qualities`() async throws {
+        let manager = ProcessManager()
+        manager.choose(input)
+        #expect(manager.estimates == nil)
+        for _ in 0..<200 where manager.estimates == nil {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        let estimates = try #require(manager.estimates)
+        #expect(estimates.best > estimates.fast && estimates.fast > 0)
+    }
+
     @Test func `a run reports live progress, then two stems`() async throws {
         defer { cleanUp() }
         let manager = ProcessManager()
+        manager.quality = .fast
         manager.choose(input)
         manager.start()
         #expect(manager.phase == .preparing)
 
         var sawMidRunProgress = false
+        var sawCountdown = false
         for _ in 0..<1200 where manager.phase.isActive {
             if manager.phase == .running, manager.progress > 0, manager.progress < 1 { sawMidRunProgress = true }
+            if manager.phase == .running, let eta = manager.eta, eta > 0 { sawCountdown = true }
             try await Task.sleep(for: .milliseconds(25))
         }
 
         #expect(manager.phase == .finished)
         #expect(sawMidRunProgress, "progress must update while the engine runs, not only at the end")
+        #expect(sawCountdown, "a time-left estimate is shown while running")
         #expect(manager.progress == 1)
         #expect(manager.device != nil)
         #expect(Set(manager.stems.map(\.kind)) == [.lead, .backing])
@@ -69,6 +84,7 @@ struct ProcessManagerTests {
     @Test func `cancel ends in cancelled with no stems`() async throws {
         defer { cleanUp() }
         let manager = ProcessManager()
+        manager.quality = .fast
         manager.choose(input)
         manager.start()
         for _ in 0..<1200 where manager.phase != .running {

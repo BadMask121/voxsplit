@@ -11,5 +11,15 @@
   "dim_f": 3072,
   "dim_t": 256,
   "compensate": 1.009,
-  "primary_stem": "vocals"
+  "primary_stem": "vocals",
+  "timing": {
+    "coreml": {
+      "load_sec": 0.5,
+      "chunk_sec": 0.17
+    },
+    "cpu": {
+      "load_sec": 0.5,
+      "chunk_sec": 0.9
+    }
+  }
 }

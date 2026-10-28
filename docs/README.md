@@ -21,14 +21,18 @@ possible in either direction.
 
 **Quality expectations.** Lead/backing is the hardest common stem task. Doubled
 leads, unison harmonies and heavy stereo effects confuse every model, including
-the paid web services. MDX-Net Karaoke 2 is a solid, well-tested baseline. The
-current state of the art, Mel-Band RoFormer Karaoke, has no ready-made ONNX
-export. Supporting it is a tracked follow-up, and the engine's model-family
-seam (`ModelFamily` in `engine/src/model.rs`) is where it plugs in.
+the paid web services. **Best** uses the BS-RoFormer karaoke model by frazer &
+becruily, a 2025 community model trained on full mixes. It has no published
+ONNX, so `tools/roformer/export.py` converts the PyTorch checkpoint, with the
+STFT kept in the engine. The converted graph matches PyTorch to 120 dB and runs
+entirely in one Core ML partition. **Fast** keeps UVR-MDX-NET Karaoke 2, plus
+3 refinement passes that re-run the karaoke model on the lead to catch leftover
+backing vocals.
 
-**Model licensing.** The weights are community models distributed through the
-UVR project. They're fine for personal use. Check their terms before any
-commercial distribution of bundles that embed them.
+**Model licensing.** The weights are community models: the MDX models come
+through the UVR project, and the BS-RoFormer checkpoint has no stated license.
+They're fine for personal use. Check their terms before any commercial
+distribution of bundles that embed them.
 
 **Platform.** v1 targets Apple Silicon macOS (CoreML on the Neural Engine and
 GPU). Windows code paths (DirectML, CUDA) are compiled behind `cfg` gates but

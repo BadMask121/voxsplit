@@ -76,6 +76,8 @@ pub enum Event<'a> {
         duration_sec: f64,
         sample_rate: u32,
         channels: u16,
+        /// Expected seconds for the whole run.
+        estimate_sec: f64,
     },
     Stage {
         stage: StageName,
@@ -88,6 +90,13 @@ pub enum Event<'a> {
         stage: StageName,
         fraction: f32,
         overall: f32,
+        /// Expected seconds until done.
+        eta_sec: f64,
+    },
+    Estimate {
+        duration_sec: f64,
+        best_sec: f64,
+        fast_sec: f64,
     },
     Log {
         level: Level,
@@ -131,6 +140,7 @@ fn clamp<'a>(event: &'a Event<'a>) -> Event<'a> {
         None => s,
     };
     let round = |v: f32| (v * 10_000.0).round() / 10_000.0;
+    let secs = |v: f64| (v.max(0.0) * 10.0).round() / 10.0;
     match *event {
         Event::Log { level, message } => Event::Log {
             level,
@@ -144,10 +154,21 @@ fn clamp<'a>(event: &'a Event<'a>) -> Event<'a> {
             stage,
             fraction,
             overall,
+            eta_sec,
         } => Event::Progress {
             stage,
             fraction: round(fraction),
             overall: round(overall),
+            eta_sec: secs(eta_sec),
+        },
+        Event::Estimate {
+            duration_sec,
+            best_sec,
+            fast_sec,
+        } => Event::Estimate {
+            duration_sec: secs(duration_sec),
+            best_sec: secs(best_sec),
+            fast_sec: secs(fast_sec),
         },
         Event::Probe {
             version,
@@ -166,12 +187,14 @@ fn clamp<'a>(event: &'a Event<'a>) -> Event<'a> {
             duration_sec,
             sample_rate,
             channels,
+            estimate_sec,
         } => Event::Start {
             version,
             stages,
             duration_sec: (duration_sec * 100.0).round() / 100.0,
             sample_rate,
             channels,
+            estimate_sec: secs(estimate_sec),
         },
         Event::Stage {
             stage,
@@ -204,9 +227,10 @@ mod tests {
             to_line(&Event::Progress {
                 stage: StageName::Vocals,
                 fraction: 0.123_456,
-                overall: 0.061_728
+                overall: 0.061_728,
+                eta_sec: 63.27,
             }),
-            "{\"event\":\"progress\",\"stage\":\"vocals\",\"fraction\":0.1235,\"overall\":0.0617}\n"
+            "{\"event\":\"progress\",\"stage\":\"vocals\",\"fraction\":0.1235,\"overall\":0.0617,\"eta_sec\":63.3}\n"
         );
         assert_eq!(
             to_line(&Event::Output {
@@ -220,7 +244,8 @@ mod tests {
             to_line(&Event::Progress {
                 stage: StageName::Refine,
                 fraction: 0.5,
-                overall: 0.875
+                overall: 0.875,
+                eta_sec: 4.0,
             })
             .contains("\"stage\":\"refine\"")
         );

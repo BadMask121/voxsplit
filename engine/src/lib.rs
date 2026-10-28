@@ -11,3 +11,4 @@ pub mod onnx;
 pub mod pipeline;
 pub mod separator;
 pub mod stft;
+pub mod timing;

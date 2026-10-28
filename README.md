@@ -7,9 +7,18 @@ Nothing leaves your machine, and end users install nothing else: no Python,
 no runtimes, no terminal.
 
 ```
-song.wav ─► Kim Vocal 2 ─► vocals ─► Karaoke 2 ─► backing_vocals.wav
-                                       └─ vocals − backing ─► lead_vocals.wav
+song.wav ─► Kim Vocal 2 ─► vocals ─► karaoke model ─► lead_vocals.wav + backing_vocals.wav
+                                      Best: BS-RoFormer Karaoke (frazer & becruily)
+                                      Fast: UVR-MDX-NET Karaoke 2, 3 refinement passes
 ```
+
+| Quality | Model | 3:10 song on an M2 Max |
+| --- | --- | --- |
+| **Best** (default) | BS-RoFormer karaoke, Core ML GPU | ~2 min (first run ever: about +1 min to compile) |
+| **Fast** | MDX-Net karaoke, 3 passes | ~23 s |
+
+Both UIs show the expected time as soon as you choose a song, and a countdown
+while it runs. Estimates learn from each run on your Mac.
 
 ## Layout
 
@@ -29,7 +38,8 @@ toolchain is pinned in `engine/rust-toolchain.toml` and installs automatically;
 JUCE 9.0.4 is fetched by CMake.
 
 ```bash
-scripts/fetch-models.sh     # ~120 MB of ONNX weights, SHA-256 verified
+scripts/fetch-models.sh     # MDX weights (~120 MB, SHA-256 verified); exports the RoFormer
+                            #   via scripts/export-roformer.sh (needs uv; ~1 GB of PyTorch, once)
 scripts/build-engine.sh     # → engine/target/release/voxsplit-engine
 scripts/build-plugin.sh     # → dist/VoxSplit.{vst3,component}, installed to ~/Library/Audio/Plug-Ins
                             #   (--no-install to skip; quit your DAW first if it has VoxSplit loaded)

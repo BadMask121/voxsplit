@@ -21,6 +21,9 @@ class SeparationJob final : private juce::Thread
 public:
     enum class Phase { idle, preparing, running, finished, failed, cancelled };
 
+    /** best: BS-RoFormer karaoke (cleaner, slower). fast: MDX-Net karaoke, 3 passes. */
+    enum class Quality { best, fast };
+
     struct Output
     {
         juce::String stem; // "lead", "backing", "instrumental"
@@ -38,6 +41,8 @@ public:
         juce::String device;     // "coreml", "cpu", ...
         double durationSec = 0.0;
         double elapsedSec = 0.0;
+        double etaSec = -1.0;     // seconds left, -1 until the engine says
+
         juce::Array<Output> outputs;
         juce::String error;
         juce::StringArray log;
@@ -47,7 +52,8 @@ public:
     ~SeparationJob() override;
 
     /** Returns false (and records why) if a run is already active or the engine is missing. */
-    bool start (const juce::File& input, const juce::File& outDir, const EngineLocation& location = locateEngine());
+    bool start (const juce::File& input, const juce::File& outDir, Quality quality,
+                const EngineLocation& location = locateEngine());
     void cancel();
 
     /** Rebuilds a finished state from a saved project, if the stems still exist. */
@@ -58,6 +64,18 @@ public:
     bool isActive() const;
 
     static juce::File defaultOutputFolder (const juce::File& input);
+
+    /** Expected run times for a file at both qualities, from `voxsplit-engine estimate`.
+        Filled in on a background thread; read it from the UI by polling `version`. */
+    struct Estimate
+    {
+        std::atomic<double> bestSec { -1.0 }, fastSec { -1.0 };
+        std::atomic<juce::uint32> version { 0 };
+    };
+
+    /** Starts estimating `input` in the background; the result lands in `into`. */
+    static void requestEstimate (const juce::File& input, std::shared_ptr<Estimate> into,
+                                 const EngineLocation& location = locateEngine());
 
 private:
     void run() override;

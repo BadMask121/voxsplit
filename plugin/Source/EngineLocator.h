@@ -5,7 +5,7 @@
 /** Where the engine binary and its models live (docs/01-architecture.md). */
 struct EngineLocation
 {
-    juce::File engine, vocalModel, karaokeModel;
+    juce::File engine, modelsDir;
     juce::String problem; // empty when everything was found
 
     bool isValid() const { return problem.isEmpty(); }

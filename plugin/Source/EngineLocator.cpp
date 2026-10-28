@@ -8,8 +8,8 @@ namespace
     constexpr const char* engineName = "voxsplit-engine";
    #endif
 
-    constexpr const char* vocalModelName = "Kim_Vocal_2.onnx";
-    constexpr const char* karaokeModelName = "UVR_MDXNET_KARA_2.onnx";
+    // Every model the engine may load, for either quality.
+    constexpr const char* requiredModels[] = { "Kim_Vocal_2", "UVR_MDXNET_KARA_2", "BS_Roformer_Karaoke" };
 
     struct Candidate
     {
@@ -47,14 +47,12 @@ EngineLocation locateEngine()
         if (! c.engine.existsAsFile())
             continue;
 
-        EngineLocation loc { c.engine,
-                             c.modelsDir.getChildFile (vocalModelName),
-                             c.modelsDir.getChildFile (karaokeModelName),
-                             {} };
-
-        if (! loc.vocalModel.existsAsFile() || ! loc.karaokeModel.existsAsFile())
-            loc.problem = "VoxSplit's model files are missing from " + c.modelsDir.getFullPathName()
-                        + ". Reinstall VoxSplit.";
+        EngineLocation loc { c.engine, c.modelsDir, {} };
+        for (auto* name : requiredModels)
+            if (! c.modelsDir.getChildFile (juce::String (name) + ".onnx").existsAsFile()
+                || ! c.modelsDir.getChildFile (juce::String (name) + ".json").existsAsFile())
+                loc.problem = "VoxSplit's model files are missing from " + c.modelsDir.getFullPathName()
+                            + ". Reinstall VoxSplit.";
         return loc;
     }
 

@@ -15,9 +15,11 @@ public enum EngineEvent: Sendable, Equatable {
         case lead, backing, instrumental
     }
 
-    case start(stages: Int, durationSec: Double, sampleRate: Int)
+    case start(stages: Int, durationSec: Double, sampleRate: Int, estimateSec: Double?)
     case stage(Stage, index: Int, stages: Int, model: String, device: String)
-    case progress(Stage, fraction: Double, overall: Double)
+    case progress(Stage, fraction: Double, overall: Double, etaSec: Double?)
+    /// From `voxsplit-engine estimate`: expected seconds at each quality.
+    case estimate(durationSec: Double, bestSec: Double, fastSec: Double)
     case log(level: String, message: String)
     case output(Stem, url: URL)
     case done(elapsedSec: Double)
@@ -35,14 +37,18 @@ public enum EngineEvent: Sendable, Equatable {
 
         switch raw.event {
         case "start":
-            self = .start(stages: raw.stages ?? 2, durationSec: raw.durationSec ?? 0, sampleRate: raw.sampleRate ?? 0)
+            self = .start(stages: raw.stages ?? 2, durationSec: raw.durationSec ?? 0, sampleRate: raw.sampleRate ?? 0,
+                          estimateSec: raw.estimateSec)
         case "stage":
             guard let stage = raw.stage.flatMap(Stage.init(rawValue:)) else { self = .other(name: raw.event); return }
             self = .stage(stage, index: raw.index ?? 1, stages: raw.stages ?? 2,
                           model: raw.model ?? "", device: raw.device ?? "")
         case "progress":
             guard let stage = raw.stage.flatMap(Stage.init(rawValue:)) else { self = .other(name: raw.event); return }
-            self = .progress(stage, fraction: raw.fraction ?? 0, overall: raw.overall ?? 0)
+            self = .progress(stage, fraction: raw.fraction ?? 0, overall: raw.overall ?? 0, etaSec: raw.etaSec)
+        case "estimate":
+            guard let best = raw.bestSec, let fast = raw.fastSec else { self = .other(name: raw.event); return }
+            self = .estimate(durationSec: raw.durationSec ?? 0, bestSec: best, fastSec: fast)
         case "log":
             self = .log(level: raw.level ?? "info", message: raw.message ?? "")
         case "output":
@@ -78,5 +84,9 @@ public enum EngineEvent: Sendable, Equatable {
         var path: String?
         var elapsedSec: Double?
         var code: String?
+        var estimateSec: Double?
+        var etaSec: Double?
+        var bestSec: Double?
+        var fastSec: Double?
     }
 }

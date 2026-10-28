@@ -115,8 +115,13 @@ struct ContentView: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(statusColour)
                 .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentTransition(.opacity)
                 .animation(Theme.easeOut(Theme.fade), value: status)
+
+            QualityToggle(quality: Bindable(manager).quality)
+                .frame(width: 124, height: 32)
+                .disabled(manager.phase.isActive)
         }
     }
 
@@ -229,8 +234,11 @@ struct ContentView: View {
 
     private var progressDetail: String {
         switch manager.phase {
+        case .preparing:
+            manager.eta.map { "\(aboutDuration($0)) in total" } ?? ""
         case .running:
             "Stage \(manager.stageIndex) of \(manager.stageCount)   ·   \(Int((manager.progress * 100).rounded()))%"
+                + (manager.eta.map { "   ·   \(timeLeft($0))" } ?? "")
         case .finished:
             manager.elapsed.map { String(format: "%.1f s on %@", $0, manager.device == "cpu" ? "CPU" : "CoreML") } ?? ""
         default:
@@ -243,7 +251,16 @@ struct ContentView: View {
         case .failed(let message): message
         case .cancelled: "Cancelled. Nothing was saved."
         case .finished: "Saved to Music / VoxSplit / \(manager.input?.deletingPathExtension().lastPathComponent ?? "")"
-        case .idle: manager.input == nil ? "" : "Stems are saved to Music / VoxSplit"
+        case .idle:
+            if manager.input == nil {
+                ""
+            } else if let estimates = manager.estimates {
+                manager.quality == .best
+                    ? "Best takes \(aboutDuration(estimates.best)) (cleanest split)"
+                    : "Fast takes \(aboutDuration(estimates.fast))"
+            } else {
+                "Estimating time…"
+            }
         case .preparing, .running: ""
         }
     }

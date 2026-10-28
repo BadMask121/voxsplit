@@ -3,13 +3,15 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
-use voxsplit::audio::BitDepth;
+use voxsplit::audio::{self, BitDepth};
 use voxsplit::cancel::Cancel;
 use voxsplit::device::{self, Device};
 use voxsplit::error::EngineError;
 use voxsplit::events::{self, ErrorCode, Event};
+use voxsplit::model::ModelConfig;
 use voxsplit::pipeline::{self, Job};
 use voxsplit::separator::SeparateOptions;
+use voxsplit::timing::TimingStore;
 
 const VOCAL_MODEL: &str = "Kim_Vocal_2.onnx";
 const KARAOKE_FAST: &str = "UVR_MDXNET_KARA_2.onnx";
@@ -32,6 +34,8 @@ enum Command {
     Separate(SeparateArgs),
     /// Report which hardware accelerators this build can use.
     Probe,
+    /// Estimate how long `separate` will take for a file, at both qualities.
+    Estimate(EstimateArgs),
 }
 
 #[derive(Args)]
@@ -78,6 +82,16 @@ struct SeparateArgs {
     denoise: bool,
     #[arg(long, value_enum, default_value_t = BitDepthArg::F32)]
     bit_depth: BitDepthArg,
+}
+
+#[derive(Args)]
+struct EstimateArgs {
+    #[arg(long)]
+    input: PathBuf,
+    #[arg(long)]
+    models_dir: Option<PathBuf>,
+    #[arg(long, value_enum, default_value_t = Device::Auto)]
+    device: Device,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -151,6 +165,10 @@ fn main() {
             Ok(()) => 0,
             Err(e) => report(e),
         },
+        Command::Estimate(args) => match estimate(args) {
+            Ok(()) => 0,
+            Err(e) => report(e),
+        },
     };
     std::process::exit(code);
 }
@@ -200,8 +218,41 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
             BitDepthArg::I16 => BitDepth::I16,
         },
         coreml_cache: coreml_cache_dir(),
+        timings: timings_path(),
     };
     pipeline::run(&env, &job, &cancel).map(|_| ())
+}
+
+fn estimate(args: EstimateArgs) -> Result<(), EngineError> {
+    let model = |file: &str| match &args.models_dir {
+        Some(dir) => dir.join(file),
+        None => bundled_model(file),
+    };
+    let config = |file: &str| ModelConfig::for_model(&model(file)).map_err(EngineError::ModelLoad);
+    let vocal = config(VOCAL_MODEL)?;
+    let duration = audio::duration_sec(&args.input).map_err(EngineError::Decode)?;
+    let samples = (duration * vocal.sample_rate as f64) as usize;
+    let timings = TimingStore::open(timings_path());
+    let device = device::expected_name(args.device);
+    let total = |karaoke: &ModelConfig, passes: u8| -> f64 {
+        pipeline::stage_estimates(
+            &timings,
+            device,
+            Some(&vocal),
+            karaoke,
+            passes,
+            None,
+            samples,
+        )
+        .iter()
+        .sum()
+    };
+    events::emit(&Event::Estimate {
+        duration_sec: duration,
+        best_sec: total(&config(KARAOKE_BEST)?, 1),
+        fast_sec: total(&config(KARAOKE_FAST)?, 3),
+    });
+    Ok(())
 }
 
 fn report(e: EngineError) -> i32 {
@@ -251,6 +302,12 @@ fn bundled_model(file: &str) -> PathBuf {
         .map(|d| d.join(file))
         .find(|p| p.is_file())
         .unwrap_or_else(|| PathBuf::from(file))
+}
+
+fn timings_path() -> Option<PathBuf> {
+    let dir = home()?.join("Library/Caches/com.voxsplit.engine");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("timings.json"))
 }
 
 fn coreml_cache_dir() -> Option<PathBuf> {

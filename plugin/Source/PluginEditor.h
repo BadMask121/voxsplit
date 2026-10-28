@@ -39,11 +39,12 @@ private:
     DropZone dropZone;
     vox::PressableButton primary { "Separate", vox::PressableButton::Style::primary };
     vox::PressableButton logToggle { "Show log", vox::PressableButton::Style::link };
+    vox::SegmentedToggle quality { { "Best", "Fast" } };
     vox::ProgressStrip progress;
     juce::OwnedArray<vox::StemRow> rows;
     juce::TextEditor console;
 
-    juce::uint32 seenVersion = 0;
+    juce::uint32 seenVersion = 0, seenEstimate = 0;
     SeparationJob::Phase shownPhase = SeparationJob::Phase::idle;
     int shownLogSize = -1;
     juce::String status, device;

@@ -41,8 +41,12 @@ juce::File VoxSplitProcessor::getInputFile() const
 
 void VoxSplitProcessor::setInputFile (const juce::File& f)
 {
-    const juce::ScopedLock sl (inputLock);
-    inputFile = f;
+    {
+        const juce::ScopedLock sl (inputLock);
+        inputFile = f;
+    }
+    if (f.existsAsFile())
+        SeparationJob::requestEstimate (f, estimate);
 }
 
 juce::String VoxSplitProcessor::describe (const juce::File& f)
@@ -67,6 +71,7 @@ void VoxSplitProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     juce::ValueTree state ("VoxSplit");
     state.setProperty ("input", getInputFile().getFullPathName(), nullptr);
+    state.setProperty ("quality", getQuality() == SeparationJob::Quality::fast ? "fast" : "best", nullptr);
 
     const auto snap = job.snapshot();
     if (snap.phase == SeparationJob::Phase::finished)
@@ -95,6 +100,8 @@ void VoxSplitProcessor::setStateInformation (const void* data, int sizeInBytes)
     const juce::String path = state.getProperty ("input").toString();
     const auto input = juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File();
     setInputFile (input);
+    setQuality (state.getProperty ("quality").toString() == "fast" ? SeparationJob::Quality::fast
+                                                                   : SeparationJob::Quality::best);
 
     juce::Array<SeparationJob::Output> outputs;
     for (const auto& o : state)

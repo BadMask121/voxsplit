@@ -5,13 +5,17 @@ import Testing
 struct EngineEventTests {
     @Test(arguments: [
         (#"{"event":"start","version":"0.1.0","stages":2,"duration_sec":213.4,"sample_rate":48000,"channels":2}"#,
-         EngineEvent.start(stages: 2, durationSec: 213.4, sampleRate: 48000)),
+         EngineEvent.start(stages: 2, durationSec: 213.4, sampleRate: 48000, estimateSec: nil)),
+        (#"{"event":"start","stages":2,"duration_sec":10,"sample_rate":44100,"channels":2,"estimate_sec":42.5}"#,
+         .start(stages: 2, durationSec: 10, sampleRate: 44100, estimateSec: 42.5)),
+        (#"{"event":"estimate","duration_sec":190.0,"best_sec":127.4,"fast_sec":22.6}"#,
+         .estimate(durationSec: 190, bestSec: 127.4, fastSec: 22.6)),
         (#"{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2","device":"coreml"}"#,
          .stage(.vocals, index: 1, stages: 2, model: "Kim Vocal 2", device: "coreml")),
         (#"{"event":"stage","stage":"refine","index":3,"stages":4,"model":"K","device":"coreml"}"#,
          .stage(.refine, index: 3, stages: 4, model: "K", device: "coreml")),
-        (#"{"event":"progress","stage":"karaoke","fraction":0.5,"overall":0.75}"#,
-         .progress(.karaoke, fraction: 0.5, overall: 0.75)),
+        (#"{"event":"progress","stage":"karaoke","fraction":0.5,"overall":0.75,"eta_sec":31.2}"#,
+         .progress(.karaoke, fraction: 0.5, overall: 0.75, etaSec: 31.2)),
         (#"{"event":"log","level":"warn","message":"coreml unavailable"}"#,
          .log(level: "warn", message: "coreml unavailable")),
         (#"{"event":"output","stem":"lead","path":"/Users/me/Music/VoxSplit/a b/lead_vocals.wav"}"#,
@@ -33,16 +37,20 @@ struct EngineEventTests {
     @Test func `arguments are one argv element per flag`() {
         let location = EngineLocation(
             engine: URL(filePath: "/x/voxsplit-engine"),
-            vocalModel: URL(filePath: "/m/Kim_Vocal_2.onnx"),
-            karaokeModel: URL(filePath: "/m/UVR_MDXNET_KARA_2.onnx")
+            modelsDir: URL(filePath: "/m dir/models", directoryHint: .isDirectory)
         )
+        let input = URL(filePath: "/Music/-a \"song\" sång.wav")
         let args = location.separateArguments(
-            input: URL(filePath: "/Music/-a \"song\" sång.wav"),
-            outputFolder: URL(filePath: "/out dir", directoryHint: .isDirectory)
+            input: input,
+            outputFolder: URL(filePath: "/out dir", directoryHint: .isDirectory),
+            quality: .best
         )
         #expect(args.first == "separate")
         #expect(args.contains("--input=/Music/-a \"song\" sång.wav"))
         #expect(args.contains { $0.hasPrefix("--out-dir=/out dir") })
+        #expect(args.contains { $0.hasPrefix("--models-dir=/m dir/models") })
+        #expect(args.contains("--quality=best"))
+        #expect(location.estimateArguments(input: input).first == "estimate")
     }
 
     @Test func `output folder mirrors the plugin's`() {

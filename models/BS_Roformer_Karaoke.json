@@ -16,5 +16,15 @@
   "zero_dc": true,
   "primary_stem": "lead",
   "default_overlap": 0.75,
-  "compute_units": "gpu"
+  "compute_units": "gpu",
+  "timing": {
+    "coreml": {
+      "load_sec": 28.0,
+      "chunk_sec": 0.72
+    },
+    "cpu": {
+      "load_sec": 1.0,
+      "chunk_sec": 6.0
+    }
+  }
 }

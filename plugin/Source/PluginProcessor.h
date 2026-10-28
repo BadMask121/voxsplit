@@ -47,7 +47,12 @@ public:
     StemPreview& getPreview() noexcept { return preview; }
 
     juce::File getInputFile() const;
+    /** Also starts estimating how long separating it will take. */
     void setInputFile (const juce::File&);
+
+    SeparationJob::Quality getQuality() const noexcept { return quality.load(); }
+    const std::shared_ptr<SeparationJob::Estimate>& getEstimate() const noexcept { return estimate; }
+    void setQuality (SeparationJob::Quality q) noexcept { quality = q; }
 
     /** "3:10  ·  44.1 kHz  ·  FLAC", read from the file header. */
     juce::String describe (const juce::File&);
@@ -59,6 +64,8 @@ private:
 
     juce::CriticalSection inputLock;
     juce::File inputFile;
+    std::atomic<SeparationJob::Quality> quality { SeparationJob::Quality::best };
+    std::shared_ptr<SeparationJob::Estimate> estimate = std::make_shared<SeparationJob::Estimate>();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxSplitProcessor)
 };

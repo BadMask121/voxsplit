@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
+use std::collections::BTreeMap;
+
+use crate::timing::Timing;
 
 /// Architecture family: how a chunk of audio becomes a model input and back.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -57,6 +60,10 @@ pub struct ModelConfig {
     pub default_overlap: Option<f32>,
     #[serde(default)]
     pub compute_units: ComputeUnits,
+    /// Default load / per-chunk times by device ("coreml", "cpu"), for estimates
+    /// before this machine has measured its own.
+    #[serde(default)]
+    pub timing: BTreeMap<String, Timing>,
     #[serde(flatten)]
     pub arch: Arch,
 }

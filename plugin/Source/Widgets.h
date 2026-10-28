@@ -50,6 +50,30 @@ private:
     juce::VBlankAttachment vblank { this, [this] { tick(); } };
 };
 
+/** Two or more mutually exclusive options; the highlight slides to the selection. */
+class SegmentedToggle final : public juce::Component
+{
+public:
+    explicit SegmentedToggle (const juce::StringArray& labels);
+
+    std::function<void (int)> onChange;
+
+    void setSelected (int index, bool animate);
+    int getSelected() const noexcept { return selected; }
+
+private:
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void enablementChanged() override { repaint(); }
+    juce::Rectangle<float> segmentBounds (float position) const;
+    void tick();
+
+    juce::StringArray labels;
+    int selected = 0;
+    Tween pill;
+    juce::VBlankAttachment vblank { this, [this] { tick(); } };
+};
+
 /** Overall progress with a smoothed, linear-feeling fill and an indeterminate mode. */
 class ProgressStrip final : public juce::Component
 {

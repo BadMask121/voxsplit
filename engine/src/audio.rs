@@ -141,6 +141,40 @@ pub fn decode(path: &Path) -> Result<Decoded> {
     })
 }
 
+/// A file's length in seconds from its header when it says (no decoding),
+/// otherwise by decoding it.
+pub fn duration_sec(path: &Path) -> Result<f64> {
+    let file = File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let format = symphonia::default::get_probe()
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
+        .context("unsupported or unrecognised audio format")?;
+    if let Some(track) = format.default_track(TrackType::Audio)
+        && let (Some(frames), Some(rate)) = (
+            track.num_frames,
+            track
+                .codec_params
+                .as_ref()
+                .and_then(|p| p.audio())
+                .and_then(|a| a.sample_rate),
+        )
+        && rate > 0
+    {
+        return Ok(frames as f64 / rate as f64);
+    }
+    let decoded = decode(path)?;
+    Ok(decoded.audio.len() as f64 / decoded.sample_rate as f64)
+}
+
 /// Resample a whole buffer; the result has exactly `round(len * to / from)` frames.
 pub fn resample(audio: &Stereo, from: u32, to: u32) -> Result<Stereo> {
     if from == to {

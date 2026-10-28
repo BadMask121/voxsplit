@@ -12,8 +12,20 @@ start with `-` can't be misread as a flag.
 
 ```
 voxsplit-engine separate --input=<audio file> [options]
+voxsplit-engine estimate --input=<audio file> [--models-dir=<dir>] [--device=…]
 voxsplit-engine probe
 ```
+
+`estimate` reads the file's length from its header, without decoding it, and
+prints one `estimate` event with the expected seconds for both qualities. It
+takes well under a second, so frontends call it as soon as a file is chosen.
+
+**How estimates work.** Every model has a load time and a time per chunk. The
+defaults live in its sidecar's `timing` block, measured on an M2 Max. After
+each run, the engine blends what it measured into
+`~/Library/Caches/com.voxsplit.engine/timings.json`, keyed by model and device,
+so estimates adapt to the machine. The first Best run also compiles the
+RoFormer for Core ML, which is about a minute slower once.
 
 ### `separate` options
 
@@ -55,9 +67,10 @@ warnings, panics).
 | `event` | Fields | When |
 | --- | --- | --- |
 | `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
-| `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*) | input decoded |
+| `estimate` | `duration_sec`, `best_sec`, `fast_sec` | `estimate` subcommand only |
+| `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*), `estimate_sec` (expected total) | input decoded |
 | `stage` | `stage` (`vocals`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
-| `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally) | after each chunk (throttled to ≥0.5% steps) |
+| `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally), `eta_sec` (seconds left: the measured rate of the current stage plus estimates for later ones) | after each chunk (throttled to ≥0.5% steps) |
 | `log` | `level` (`info`\|`warn`), `message` | notable milestones |
 | `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
 | `done` | `elapsed_sec` | success, just before exit 0 |

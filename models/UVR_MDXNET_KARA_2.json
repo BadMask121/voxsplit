@@ -11,5 +11,15 @@
   "dim_f": 2048,
   "dim_t": 256,
   "compensate": 1.065,
-  "primary_stem": "instrumental"
+  "primary_stem": "instrumental",
+  "timing": {
+    "coreml": {
+      "load_sec": 0.5,
+      "chunk_sec": 0.055
+    },
+    "cpu": {
+      "load_sec": 0.5,
+      "chunk_sec": 0.45
+    }
+  }
 }

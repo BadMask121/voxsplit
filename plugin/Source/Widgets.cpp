@@ -212,6 +212,73 @@ void PlayButton::paintButton (juce::Graphics& g, bool, bool)
 }
 
 //==============================================================================
+SegmentedToggle::SegmentedToggle (const juce::StringArray& labelsIn) : labels (labelsIn)
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setTitle ("Quality");
+}
+
+void SegmentedToggle::setSelected (int index, bool animate)
+{
+    index = juce::jlimit (0, labels.size() - 1, index);
+    selected = index;
+    // The highlight moves between two on-screen positions: ease-in-out, not ease-out.
+    if (animate && ! prefersReducedMotion())
+        pill.animateTo ((float) index, 200.0, easeInOut);
+    else
+        pill.snap ((float) index);
+    setDescription (labels[index]);
+    repaint();
+}
+
+void SegmentedToggle::mouseDown (const juce::MouseEvent& e)
+{
+    if (! isEnabled())
+        return;
+    const auto index = juce::jlimit (0, labels.size() - 1, (int) (e.position.x / ((float) getWidth() / (float) labels.size())));
+    if (index == selected)
+        return;
+    setSelected (index, true);
+    if (onChange)
+        onChange (index);
+}
+
+juce::Rectangle<float> SegmentedToggle::segmentBounds (float position) const
+{
+    const auto inner = getLocalBounds().toFloat().reduced (3.0f);
+    const auto width = inner.getWidth() / (float) labels.size();
+    return { inner.getX() + width * position, inner.getY(), width, inner.getHeight() };
+}
+
+void SegmentedToggle::tick()
+{
+    if (pill.tick (nowMs()))
+        repaint();
+}
+
+void SegmentedToggle::paint (juce::Graphics& g)
+{
+    const float alpha = isEnabled() ? 1.0f : 0.45f;
+    auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    g.setColour (colours::surface.withMultipliedAlpha (alpha));
+    g.fillRoundedRectangle (bounds, 8.0f);
+    g.setColour (colours::border.withMultipliedAlpha (alpha));
+    g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
+
+    g.setColour (colours::surfaceHi.brighter (0.15f).withMultipliedAlpha (alpha));
+    g.fillRoundedRectangle (segmentBounds (pill.value), 6.0f);
+
+    g.setFont (font (12.5f, true));
+    for (int i = 0; i < labels.size(); ++i)
+    {
+        // Text brightens as the highlight arrives under it.
+        const auto closeness = juce::jlimit (0.0f, 1.0f, 1.0f - std::abs (pill.value - (float) i));
+        g.setColour (colours::textDim.interpolatedWith (colours::text, closeness).withMultipliedAlpha (alpha));
+        g.drawText (labels[i], segmentBounds ((float) i), juce::Justification::centred);
+    }
+}
+
+//==============================================================================
 void ProgressStrip::setState (Mode newMode, float fraction, const juce::String& newLabel, const juce::String& newDetail)
 {
     // A new run starts from zero; otherwise progress only ever moves forward.

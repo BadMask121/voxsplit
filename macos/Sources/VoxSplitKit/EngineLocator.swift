@@ -1,33 +1,45 @@
 import Foundation
 
-/// Where the engine binary and its two models live (docs/01-architecture.md).
+/// best: BS-RoFormer karaoke (cleanest, slower). fast: MDX-Net karaoke with 3 passes.
+public enum Quality: String, Sendable, CaseIterable {
+    case best, fast
+}
+
+/// Where the engine binary and its models live (docs/01-architecture.md).
 public struct EngineLocation: Sendable, Equatable {
     public let engine: URL
-    public let vocalModel: URL
-    public let karaokeModel: URL
+    public let modelsDir: URL
 
-    public init(engine: URL, vocalModel: URL, karaokeModel: URL) {
+    public init(engine: URL, modelsDir: URL) {
         self.engine = engine
-        self.vocalModel = vocalModel
-        self.karaokeModel = karaokeModel
+        self.modelsDir = modelsDir
     }
 
     /// argv for `separate`, one `--flag=value` element per option.
-    public func separateArguments(input: URL, outputFolder: URL) -> [String] {
+    public func separateArguments(input: URL, outputFolder: URL, quality: Quality) -> [String] {
         [
             "separate",
             "--input=\(input.path(percentEncoded: false))",
             "--out-dir=\(outputFolder.path(percentEncoded: false))",
-            "--vocal-model=\(vocalModel.path(percentEncoded: false))",
-            "--karaoke-model=\(karaokeModel.path(percentEncoded: false))",
+            "--models-dir=\(modelsDir.path(percentEncoded: false))",
+            "--quality=\(quality.rawValue)",
+        ]
+    }
+
+    /// argv for `estimate`: expected run time at both qualities.
+    public func estimateArguments(input: URL) -> [String] {
+        [
+            "estimate",
+            "--input=\(input.path(percentEncoded: false))",
+            "--models-dir=\(modelsDir.path(percentEncoded: false))",
         ]
     }
 }
 
 public enum EngineLocator {
     public static let engineName = "voxsplit-engine"
-    public static let vocalModelName = "Kim_Vocal_2.onnx"
-    public static let karaokeModelName = "UVR_MDXNET_KARA_2.onnx"
+    /// Every model the engine may load, for either quality (each with a `.json` sidecar).
+    public static let requiredModels = ["Kim_Vocal_2", "UVR_MDXNET_KARA_2", "BS_Roformer_Karaoke"]
 
     /// Search order: `VOXSPLIT_ENGINE` / `VOXSPLIT_MODELS` (development, e.g. `swift run`),
     /// the app bundle (`Contents/Helpers`, `Contents/Resources/models`), then
@@ -51,15 +63,13 @@ public enum EngineLocator {
 
         let files = FileManager.default
         for candidate in candidates {
-            let location = EngineLocation(
-                engine: candidate.engine,
-                vocalModel: candidate.models.appending(path: vocalModelName),
-                karaokeModel: candidate.models.appending(path: karaokeModelName)
-            )
-            if files.isExecutableFile(atPath: location.engine.path(percentEncoded: false)),
-               files.fileExists(atPath: location.vocalModel.path(percentEncoded: false)),
-               files.fileExists(atPath: location.karaokeModel.path(percentEncoded: false)) {
-                return location
+            let hasModels = requiredModels.allSatisfy { name in
+                ["onnx", "json"].allSatisfy { ext in
+                    files.fileExists(atPath: candidate.models.appending(path: "\(name).\(ext)").path(percentEncoded: false))
+                }
+            }
+            if files.isExecutableFile(atPath: candidate.engine.path(percentEncoded: false)), hasModels {
+                return EngineLocation(engine: candidate.engine, modelsDir: candidate.models)
             }
         }
         return nil

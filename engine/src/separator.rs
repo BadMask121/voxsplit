@@ -343,6 +343,7 @@ mod tests {
             batch_dim: "batch_size".into(),
             default_overlap: None,
             compute_units: ComputeUnits::All,
+            timing: Default::default(),
             arch: Arch::Mdx {
                 dim_f: 257,
                 dim_t: 64,

@@ -108,6 +108,65 @@ private struct ScaleOnPress: ButtonStyle {
     }
 }
 
+// MARK: - Quality toggle
+
+/// Best / Fast. The highlight slides between the two (on-screen movement: ease-in-out).
+struct QualityToggle: View {
+    @Binding var quality: Quality
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Quality.allCases, id: \.self) { option in
+                let selected = option == quality
+                Text(option == .best ? "Best" : "Fast")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(selected ? Theme.text : Theme.textDim)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Theme.surfaceHi.opacity(1))
+                                .brightness(0.06)
+                                .matchedGeometryEffect(id: "pill", in: pill)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard isEnabled, !selected else { return }
+                        withAnimation(reduceMotion ? nil : .timingCurve(0.77, 0, 0.175, 1, duration: 0.2)) {
+                            quality = option
+                        }
+                    }
+                    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.surface))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border, lineWidth: 1))
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Quality")
+    }
+}
+
+/// "about 25 s", "about 2 min 10 s": rounded so the number doesn't flicker.
+func aboutDuration(_ seconds: Double) -> String {
+    if seconds < 60 { return "about \(max(5, Int((seconds / 5).rounded(.up)) * 5)) s" }
+    let rounded = Int((seconds / 10).rounded()) * 10
+    return "about \(rounded / 60) min" + (rounded % 60 > 0 ? " \(rounded % 60) s" : "")
+}
+
+/// Countdown while running: "1:05 left", "25 s left".
+func timeLeft(_ seconds: Double) -> String {
+    if seconds < 5 { return "a few seconds left" }
+    if seconds < 60 { return "\(Int((seconds / 5).rounded(.up)) * 5) s left" }
+    let s = Int(seconds.rounded())
+    return "\(s / 60):" + String(format: "%02d", s % 60) + " left"
+}
+
 // MARK: - Drop zone
 
 struct DropZoneView: View {

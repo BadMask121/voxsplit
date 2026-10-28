@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import os
 import VoxSplitKit
 
 /// Owns one separation at a time: launches the engine through `EngineRunner`, turns its
@@ -43,8 +44,18 @@ final class ProcessManager {
     private(set) var stems: [Stem] = []
     private(set) var elapsed: Double?
     private(set) var log: [LogLine] = []
+    /// Expected seconds per quality for the chosen file (`nil` while estimating).
+    private(set) var estimates: (best: Double, fast: Double)?
+    /// Seconds left in the current run, as the engine last reported.
+    private(set) var eta: Double?
+
+    /// Remembered across launches.
+    var quality: Quality = Quality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .best {
+        didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") }
+    }
 
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var estimateTask: Task<Void, Never>?
     @ObservationIgnored private var nextLogID = 0
     @ObservationIgnored private var sawDone = false
     @ObservationIgnored private var sawCancelled = false
@@ -65,7 +76,27 @@ final class ProcessManager {
         stems = []
         progress = 0
         elapsed = nil
+        requestEstimate(for: url)
         return true
+    }
+
+    /// Asks the engine how long each quality will take; quick (header only).
+    private func requestEstimate(for url: URL) {
+        estimates = nil
+        estimateTask?.cancel()
+        guard let location = EngineLocator.locate() else { return }
+        let runner = EngineRunner(executable: location.engine)
+        let arguments = location.estimateArguments(input: url)
+        estimateTask = Task {
+            let result = OSAllocatedUnfairLock<(Double, Double)?>(initialState: nil)
+            _ = try? await runner.run(arguments: arguments) { output in
+                if case .event(.estimate(_, let best, let fast)) = output {
+                    result.withLock { $0 = (best, fast) }
+                }
+            }
+            guard !Task.isCancelled, input == url, let (best, fast) = result.withLock({ $0 }) else { return }
+            estimates = (best, fast)
+        }
     }
 
     func start() {
@@ -89,8 +120,10 @@ final class ProcessManager {
         let runner = EngineRunner(executable: location.engine)
         let arguments = location.separateArguments(
             input: input,
-            outputFolder: EngineLocator.defaultOutputFolder(for: input)
+            outputFolder: EngineLocator.defaultOutputFolder(for: input),
+            quality: quality
         )
+        eta = nil
 
         task = Task {
             do {
@@ -123,8 +156,9 @@ final class ProcessManager {
 
     private func apply(_ event: EngineEvent) {
         switch event {
-        case .start(let stages, _, _):
+        case .start(let stages, _, _, let estimate):
             stageCount = stages
+            eta = estimate
         case .stage(let name, let index, let stages, let model, let device):
             phase = .running
             stage = name
@@ -132,8 +166,9 @@ final class ProcessManager {
             stageCount = stages
             self.device = device
             appendLog("Stage \(index): \(model) on \(device)", isError: false)
-        case .progress(_, _, let overall):
+        case .progress(_, _, let overall, let secondsLeft):
             progress = overall
+            if let secondsLeft { eta = secondsLeft }
         case .log(_, let message):
             appendLog(message, isError: false)
         case .output(let kind, let url):
@@ -147,7 +182,7 @@ final class ProcessManager {
         case .error(_, let message):
             engineError = message
             appendLog("Error: \(message)", isError: true)
-        case .other:
+        case .estimate, .other:
             break
         }
     }

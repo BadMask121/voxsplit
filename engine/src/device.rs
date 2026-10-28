@@ -116,6 +116,21 @@ fn directml() -> Candidate {
     }
 }
 
+/// The device a run will most likely use, for estimates made before any model
+/// loads. `auto` is the first accelerator this build has; CPU otherwise.
+pub fn expected_name(device: Device) -> &'static str {
+    match device {
+        Device::Cpu => "cpu",
+        Device::Coreml => "coreml",
+        Device::Cuda => "cuda",
+        Device::Directml => "directml",
+        Device::Auto => probe()
+            .iter()
+            .find(|d| d.available && d.name != "cpu")
+            .map_or("cpu", |d| d.name),
+    }
+}
+
 /// What this binary was built with and what the linked ONNX Runtime reports.
 pub fn probe() -> Vec<DeviceInfo> {
     #[allow(unused_mut)]

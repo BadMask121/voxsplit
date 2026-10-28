@@ -10,12 +10,11 @@ private let repo = URL(filePath: #filePath)
 
 private let repoEngine = EngineLocation(
     engine: repo.appending(path: "engine/target/release/voxsplit-engine"),
-    vocalModel: repo.appending(path: "models/Kim_Vocal_2.onnx"),
-    karaokeModel: repo.appending(path: "models/UVR_MDXNET_KARA_2.onnx")
+    modelsDir: repo.appending(path: "models", directoryHint: .isDirectory)
 )
 
 private let engineIsBuilt = FileManager.default.isExecutableFile(atPath: repoEngine.engine.path(percentEncoded: false))
-    && FileManager.default.fileExists(atPath: repoEngine.vocalModel.path(percentEncoded: false))
+    && FileManager.default.fileExists(atPath: repoEngine.modelsDir.appending(path: "BS_Roformer_Karaoke.onnx").path(percentEncoded: false))
 
 /// Collects everything the runner reports, from whichever thread it arrives on.
 private final class Recorder: Sendable {
@@ -56,7 +55,7 @@ struct EngineRunnerTests {
         let recorder = Recorder()
 
         let status = try await EngineRunner(executable: repoEngine.engine)
-            .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out)) { recorder.record($0) }
+            .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast)) { recorder.record($0) }
 
         #expect(status == 0)
         let events = recorder.events
@@ -76,7 +75,7 @@ struct EngineRunnerTests {
 
         let run = Task {
             try await EngineRunner(executable: repoEngine.engine)
-                .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out)) { recorder.record($0) }
+                .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast)) { recorder.record($0) }
         }
         // Wait until inference is underway, then cancel.
         for _ in 0..<600 where !recorder.events.contains(where: { if case .progress = $0 { true } else { false } }) {
@@ -89,6 +88,21 @@ struct EngineRunnerTests {
         #expect(recorder.events.contains(.cancelled))
         let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: out.path(percentEncoded: false))) ?? []
         #expect(!leftovers.contains { $0.hasSuffix(".partial") })
+    }
+
+    @Test func `estimate answers quickly with both qualities`() async throws {
+        let input = dir.appending(path: "estimate me.wav")
+        try writeTestWav(to: input, seconds: 20)
+        let recorder = Recorder()
+        let status = try await EngineRunner(executable: repoEngine.engine)
+            .run(arguments: repoEngine.estimateArguments(input: input)) { recorder.record($0) }
+        #expect(status == 0)
+        let estimate = recorder.events.compactMap {
+            if case .estimate(let duration, let best, let fast) = $0 { (duration, best, fast) } else { nil }
+        }.first
+        let (duration, best, fast) = try #require(estimate)
+        #expect(abs(duration - 20) < 0.1)
+        #expect(best > fast && fast > 0)
     }
 
     @Test func `bad arguments exit 2 with an error event`() async throws {
