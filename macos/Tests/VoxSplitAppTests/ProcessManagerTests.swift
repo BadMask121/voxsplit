@@ -1,0 +1,84 @@
+import AVFoundation
+import Foundation
+import Testing
+@testable import VoxSplit
+import VoxSplitKit
+
+/// Drives the app's state machine against the real engine, without any UI.
+private nonisolated let repo = URL(filePath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+private nonisolated let engine = repo.appending(path: "engine/target/release/voxsplit-engine")
+private nonisolated let models = repo.appending(path: "models", directoryHint: .isDirectory)
+private nonisolated let engineIsBuilt = FileManager.default.isExecutableFile(atPath: engine.path(percentEncoded: false))
+    && FileManager.default.fileExists(atPath: models.appending(path: "Kim_Vocal_2.onnx").path(percentEncoded: false))
+
+@Suite(.enabled(if: engineIsBuilt, "build the engine and fetch models first"), .serialized)
+struct ProcessManagerTests {
+    let input: URL
+
+    init() throws {
+        setenv("VOXSPLIT_ENGINE", engine.path(percentEncoded: false), 1)
+        setenv("VOXSPLIT_MODELS", models.path(percentEncoded: false), 1)
+        // A uniquely named input keeps each run's output folder separate.
+        let dir = FileManager.default.temporaryDirectory.appending(path: "voxsplit-app-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        input = dir.appending(path: "voxsplit-test-\(UUID().uuidString.prefix(8)).wav")
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+        let file = try AVAudioFile(forWriting: input, settings: format.settings)
+        let frames = AVAudioFrameCount(48_000 * 30)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        for i in 0..<Int(frames) { buffer.floatChannelData![0][i] = Float(0.3 * sin(Double(i) * 0.0576)) }
+        try file.write(from: buffer)
+    }
+
+    private func cleanUp() {
+        try? FileManager.default.removeItem(at: EngineLocator.defaultOutputFolder(for: input))
+    }
+
+    @Test func `rejects unsupported files and describes supported ones`() {
+        let manager = ProcessManager()
+        #expect(!manager.choose(URL(filePath: "/tmp/notes.txt")))
+        #expect(manager.input == nil)
+        #expect(manager.choose(input))
+        #expect(manager.inputDetails.hasPrefix("0:30"))
+        #expect(manager.inputDetails.contains("48 kHz"))
+    }
+
+    @Test func `a run reports live progress, then two stems`() async throws {
+        defer { cleanUp() }
+        let manager = ProcessManager()
+        manager.choose(input)
+        manager.start()
+        #expect(manager.phase == .preparing)
+
+        var sawMidRunProgress = false
+        for _ in 0..<1200 where manager.phase.isActive {
+            if manager.phase == .running, manager.progress > 0, manager.progress < 1 { sawMidRunProgress = true }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        #expect(manager.phase == .finished)
+        #expect(sawMidRunProgress, "progress must update while the engine runs, not only at the end")
+        #expect(manager.progress == 1)
+        #expect(manager.device != nil)
+        #expect(Set(manager.stems.map(\.kind)) == [.lead, .backing])
+        #expect((manager.elapsed ?? 0) > 0)
+    }
+
+    @Test func `cancel ends in cancelled with no stems`() async throws {
+        defer { cleanUp() }
+        let manager = ProcessManager()
+        manager.choose(input)
+        manager.start()
+        for _ in 0..<1200 where manager.phase != .running {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        manager.cancel()
+        for _ in 0..<400 where manager.phase.isActive {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(manager.phase == .cancelled)
+        #expect(manager.stems.isEmpty)
+    }
+}
