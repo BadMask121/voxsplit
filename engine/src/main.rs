@@ -9,7 +9,7 @@ use voxsplit::device::{self, Device};
 use voxsplit::error::EngineError;
 use voxsplit::events::{self, ErrorCode, Event};
 use voxsplit::model::ModelConfig;
-use voxsplit::pipeline::{self, Job};
+use voxsplit::pipeline::{self, Job, Tool};
 use voxsplit::separator::SeparateOptions;
 use voxsplit::timing::TimingStore;
 
@@ -43,6 +43,10 @@ struct SeparateArgs {
     /// Audio file to separate (wav, aiff, flac, mp3, m4a).
     #[arg(long)]
     input: PathBuf,
+    /// lead-backing: lead_vocals.wav + backing_vocals.wav.
+    /// vocal-remover: vocals.wav + instrumental.wav.
+    #[arg(long, value_enum, default_value_t = ToolArg::LeadBacking)]
+    tool: ToolArg,
     /// Output folder [default: ~/Music/VoxSplit/<input name>].
     #[arg(long)]
     out_dir: Option<PathBuf>,
@@ -98,6 +102,12 @@ struct EstimateArgs {
     models_dir: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = Device::Auto)]
     device: Device,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ToolArg {
+    LeadBacking,
+    VocalRemover,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -198,6 +208,10 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         Quality::Fast => (KARAOKE_FAST, 3),
     };
     let job = Job {
+        tool: match args.tool {
+            ToolArg::LeadBacking => Tool::LeadBacking,
+            ToolArg::VocalRemover => Tool::VocalRemover,
+        },
         vocal_model: args
             .vocal_model
             .clone()
@@ -251,7 +265,7 @@ fn estimate(args: EstimateArgs) -> Result<(), EngineError> {
             device,
             Some(&vocal),
             2,
-            karaoke,
+            Some(karaoke),
             2,
             None,
             SeparateOptions::default(),

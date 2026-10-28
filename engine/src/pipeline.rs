@@ -30,7 +30,17 @@ use crate::onnx::OrtModel;
 use crate::separator::{self, SeparateOptions, chunk_count};
 use crate::timing::{Timing, TimingStore};
 
+/// What a run produces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tool {
+    /// Vocals, then lead + backing (karaoke model and its refinement passes).
+    LeadBacking,
+    /// Vocals + instrumental only.
+    VocalRemover,
+}
+
 pub struct Job {
+    pub tool: Tool,
     pub input: PathBuf,
     pub out_dir: PathBuf,
     pub vocal_model: PathBuf,
@@ -72,7 +82,7 @@ pub fn stage_estimates(
     device: &str,
     vocal: Option<&ModelConfig>,
     vocal_passes: u8,
-    karaoke: &ModelConfig,
+    karaoke: Option<&ModelConfig>,
     passes: u8,
     overlap: Option<f32>,
     opts: SeparateOptions,
@@ -91,6 +101,9 @@ pub fn stage_estimates(
             ));
         }
     }
+    let Some(karaoke) = karaoke else {
+        return estimates;
+    };
     let t = timings.get(karaoke, device);
     let runs = opts.runs_per_chunk(karaoke);
     for pass in 0..passes.max(1) {
@@ -113,14 +126,23 @@ pub fn run(
     let started = Instant::now();
 
     // Validate everything cheap before spending minutes on inference.
-    let karaoke_cfg = ModelConfig::for_model(&job.karaoke_model).map_err(EngineError::ModelLoad)?;
-    let vocal_passes = job.vocal_passes.min(5);
+    let vocal_remover = job.tool == Tool::VocalRemover;
+    // The vocal remover is the vocal stage on its own, so it runs at least once.
+    let vocal_passes = if vocal_remover {
+        job.vocal_passes.clamp(1, 5)
+    } else {
+        job.vocal_passes.min(5)
+    };
+    let karaoke_cfg = (!vocal_remover)
+        .then(|| ModelConfig::for_model(&job.karaoke_model))
+        .transpose()
+        .map_err(EngineError::ModelLoad)?;
     let vocal_cfg = (vocal_passes > 0)
         .then(|| ModelConfig::for_model(&job.vocal_model))
         .transpose()
         .map_err(EngineError::ModelLoad)?;
-    if let Some(cfg) = &vocal_cfg
-        && cfg.sample_rate != karaoke_cfg.sample_rate
+    if let (Some(vocal), Some(karaoke)) = (&vocal_cfg, &karaoke_cfg)
+        && vocal.sample_rate != karaoke.sample_rate
     {
         return Err(EngineError::ModelLoad(anyhow!(
             "vocal and karaoke models must share a sample rate"
@@ -131,11 +153,14 @@ pub fn run(
         .map_err(EngineError::Write)?;
 
     let decoded = audio::decode(&job.input).map_err(EngineError::Decode)?;
-    let passes = job.passes.max(1);
+    let passes = if vocal_remover { 0 } else { job.passes.max(1) };
     let karaoke_stage = vocal_passes + 1;
     let stages = vocal_passes + passes;
     let source_rate = decoded.sample_rate;
-    let work_rate = karaoke_cfg.sample_rate;
+    let work_rate = karaoke_cfg
+        .as_ref()
+        .or(vocal_cfg.as_ref())
+        .map_or(44_100, |cfg| cfg.sample_rate);
     let work_len = (decoded.audio.len() as f64 * work_rate as f64 / source_rate as f64) as usize;
 
     let mut timings = TimingStore::open(job.timings.clone());
@@ -144,7 +169,7 @@ pub fn run(
         device::expected_name(job.device),
         vocal_cfg.as_ref(),
         vocal_passes,
-        &karaoke_cfg,
+        karaoke_cfg.as_ref(),
         passes,
         job.overlap,
         job.separate,
@@ -173,9 +198,10 @@ pub fn run(
         )
         .map_err(EngineError::Write)
     };
-    let mut lead = sink(Stem::Lead)?;
-    let mut backing = sink(Stem::Backing)?;
-    let mut instrumental = (job.keep_instrumental && vocal_cfg.is_some())
+    let mut lead = (!vocal_remover).then(|| sink(Stem::Lead)).transpose()?;
+    let mut backing = (!vocal_remover).then(|| sink(Stem::Backing)).transpose()?;
+    let mut vocals_out = vocal_remover.then(|| sink(Stem::Vocals)).transpose()?;
+    let mut instrumental = ((job.keep_instrumental || vocal_remover) && vocal_cfg.is_some())
         .then(|| sink(Stem::Instrumental))
         .transpose()?;
 
@@ -257,110 +283,126 @@ pub fn run(
     };
     cancel.check()?;
 
-    // Stage 2 and refinement passes, with one karaoke session for all of them.
-    // Stage 1's session was dropped above, so only one model is resident at a time.
-    let loading = Instant::now();
-    let mut model = load(env, job, &job.karaoke_model, &karaoke_cfg)?;
-    let load_sec = loading.elapsed().as_secs_f64();
-    let comp = karaoke_cfg.compensate;
-    let karaoke_opts = job.options_for(&karaoke_cfg);
-    let chunks = chunk_count(&karaoke_cfg, vocals.len(), karaoke_opts.overlap);
-    let runs = karaoke_opts.runs_per_chunk(&karaoke_cfg);
-    let chunk_sec = timings.get(&karaoke_cfg, model.1).chunk_sec;
-    // The remaining passes, re-estimated for the device that actually loaded.
-    for e in estimates.iter_mut().skip(karaoke_stage as usize - 1) {
-        *e = chunks as f64 * runs * chunk_sec;
-    }
-    let mut inference_sec = 0.0;
-    // MDX karaoke models output the backing side; RoFormer karaoke models output
-    // the lead itself, so the backing they find is the current lead minus it.
-    let primary_is_lead = karaoke_cfg.primary_is_lead();
-    let mut lead_audio = vocals;
-    let mut backing_audio = Stereo::zeros(lead_audio.len());
-    for pass in 0..passes {
-        let index = karaoke_stage + pass;
-        let stage = if pass == 0 {
-            StageName::Karaoke
-        } else {
-            StageName::Refine
-        };
-        events::emit(&Event::Stage {
-            stage,
-            index,
-            stages,
-            model: &karaoke_cfg.name,
-            device: model.1,
-        });
-        let mut progress = Progress::new(
-            stage,
-            index - 1,
-            stages,
-            chunks as f64 * runs * chunk_sec,
-            estimates[index as usize..].iter().sum(),
-        );
-        let mut found = Stereo::with_capacity(lead_audio.len());
-        separator::separate(
-            &mut model.0,
-            &karaoke_cfg,
-            &lead_audio,
-            karaoke_opts,
-            |done, total| {
-                cancel.check()?;
-                progress.update(done, total);
-                Ok(())
-            },
-            |start, l, r| {
-                for (i, (&el, &er)) in l.iter().zip(r).enumerate() {
-                    let (el, er) = (el * comp, er * comp);
-                    if primary_is_lead {
-                        found.l.push(lead_audio.l[start + i] - el);
-                        found.r.push(lead_audio.r[start + i] - er);
-                    } else {
-                        found.l.push(el);
-                        found.r.push(er);
-                    }
-                }
-                Ok(())
-            },
-        )?;
-        inference_sec += progress.elapsed();
-        // Move what this pass found from the lead to the backing stem.
-        for (channel, (lead_ch, backing_ch)) in [
-            (&found.l, (&mut lead_audio.l, &mut backing_audio.l)),
-            (&found.r, (&mut lead_audio.r, &mut backing_audio.r)),
-        ] {
-            for ((lead_s, backing_s), f) in
-                lead_ch.iter_mut().zip(backing_ch.iter_mut()).zip(channel)
-            {
-                *lead_s -= f;
-                *backing_s += f;
+    match &karaoke_cfg {
+        None => {
+            // Vocal remover: done after the vocal stage.
+            if let Some(out) = vocals_out.as_mut() {
+                out.write(&vocals.l, &vocals.r)
+                    .map_err(EngineError::Write)?;
             }
         }
-        cancel.check()?;
+        Some(karaoke_cfg) => {
+            // Stage 2 and refinement passes, with one karaoke session for all of them.
+            // Stage 1's session was dropped above, so only one model is resident at a time.
+            let loading = Instant::now();
+            let mut model = load(env, job, &job.karaoke_model, karaoke_cfg)?;
+            let load_sec = loading.elapsed().as_secs_f64();
+            let comp = karaoke_cfg.compensate;
+            let karaoke_opts = job.options_for(karaoke_cfg);
+            let chunks = chunk_count(karaoke_cfg, vocals.len(), karaoke_opts.overlap);
+            let runs = karaoke_opts.runs_per_chunk(karaoke_cfg);
+            let chunk_sec = timings.get(karaoke_cfg, model.1).chunk_sec;
+            // The remaining passes, re-estimated for the device that actually loaded.
+            for e in estimates.iter_mut().skip(karaoke_stage as usize - 1) {
+                *e = chunks as f64 * runs * chunk_sec;
+            }
+            let mut inference_sec = 0.0;
+            // MDX karaoke models output the backing side; RoFormer karaoke models output
+            // the lead itself, so the backing they find is the current lead minus it.
+            let primary_is_lead = karaoke_cfg.primary_is_lead();
+            let mut lead_audio = vocals;
+            let mut backing_audio = Stereo::zeros(lead_audio.len());
+            for pass in 0..passes {
+                let index = karaoke_stage + pass;
+                let stage = if pass == 0 {
+                    StageName::Karaoke
+                } else {
+                    StageName::Refine
+                };
+                events::emit(&Event::Stage {
+                    stage,
+                    index,
+                    stages,
+                    model: &karaoke_cfg.name,
+                    device: model.1,
+                });
+                let mut progress = Progress::new(
+                    stage,
+                    index - 1,
+                    stages,
+                    chunks as f64 * runs * chunk_sec,
+                    estimates[index as usize..].iter().sum(),
+                );
+                let mut found = Stereo::with_capacity(lead_audio.len());
+                separator::separate(
+                    &mut model.0,
+                    karaoke_cfg,
+                    &lead_audio,
+                    karaoke_opts,
+                    |done, total| {
+                        cancel.check()?;
+                        progress.update(done, total);
+                        Ok(())
+                    },
+                    |start, l, r| {
+                        for (i, (&el, &er)) in l.iter().zip(r).enumerate() {
+                            let (el, er) = (el * comp, er * comp);
+                            if primary_is_lead {
+                                found.l.push(lead_audio.l[start + i] - el);
+                                found.r.push(lead_audio.r[start + i] - er);
+                            } else {
+                                found.l.push(el);
+                                found.r.push(er);
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
+                inference_sec += progress.elapsed();
+                // Move what this pass found from the lead to the backing stem.
+                for (channel, (lead_ch, backing_ch)) in [
+                    (&found.l, (&mut lead_audio.l, &mut backing_audio.l)),
+                    (&found.r, (&mut lead_audio.r, &mut backing_audio.r)),
+                ] {
+                    for ((lead_s, backing_s), f) in
+                        lead_ch.iter_mut().zip(backing_ch.iter_mut()).zip(channel)
+                    {
+                        *lead_s -= f;
+                        *backing_s += f;
+                    }
+                }
+                cancel.check()?;
+            }
+            timings.record(
+                karaoke_cfg,
+                model.1,
+                Timing {
+                    load_sec,
+                    chunk_sec: inference_sec / ((chunks.max(1) * passes as usize) as f64 * runs),
+                },
+            );
+            lead.as_mut()
+                .expect("lead sink")
+                .write(&lead_audio.l, &lead_audio.r)
+                .map_err(EngineError::Write)?;
+            backing
+                .as_mut()
+                .expect("backing sink")
+                .write(&backing_audio.l, &backing_audio.r)
+                .map_err(EngineError::Write)?;
+        }
     }
-    timings.record(
-        &karaoke_cfg,
-        model.1,
-        Timing {
-            load_sec,
-            chunk_sec: inference_sec / ((chunks.max(1) * passes as usize) as f64 * runs),
-        },
-    );
-    lead.write(&lead_audio.l, &lead_audio.r)
-        .map_err(EngineError::Write)?;
-    backing
-        .write(&backing_audio.l, &backing_audio.r)
-        .map_err(EngineError::Write)?;
 
-    let mut outputs = vec![
-        (Stem::Lead, lead.finish().map_err(EngineError::Write)?),
-        (Stem::Backing, backing.finish().map_err(EngineError::Write)?),
-    ];
-    if let Some(inst) = instrumental {
-        outputs.push((
-            Stem::Instrumental,
-            inst.finish().map_err(EngineError::Write)?,
-        ));
+    let mut outputs = Vec::new();
+    for (stem, sink) in [
+        (Stem::Lead, lead),
+        (Stem::Backing, backing),
+        (Stem::Vocals, vocals_out),
+        (Stem::Instrumental, instrumental),
+    ] {
+        if let Some(sink) = sink {
+            outputs.push((stem, sink.finish().map_err(EngineError::Write)?));
+        }
     }
     timings.save();
     for (stem, path) in &outputs {

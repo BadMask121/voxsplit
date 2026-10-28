@@ -155,3 +155,45 @@ fn estimate_reports_both_qualities_from_the_header() {
     );
     assert!(best > fast && fast > 0.0, "best {best} fast {fast}");
 }
+
+#[test]
+fn vocal_remover_writes_vocals_and_instrumental() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("tone.wav");
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: 44_100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut w = hound::WavWriter::create(&input, spec).unwrap();
+    for i in 0..44_100 * 4 {
+        let v = ((i as f32 * 0.05).sin() * 8_000.0) as i16;
+        w.write_sample(v).unwrap();
+        w.write_sample(v).unwrap();
+    }
+    w.finalize().unwrap();
+    let models = concat!(env!("CARGO_MANIFEST_DIR"), "/../models");
+    let out_dir = dir.path().join("out");
+    let out = engine(&[
+        "separate",
+        "--tool=vocal-remover",
+        "--vocal-passes=0", // clamped to 1: the vocal remover is the vocal stage
+        &format!("--input={}", input.display()),
+        &format!("--out-dir={}", out_dir.display()),
+        &format!("--models-dir={models}"),
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stems: Vec<String> = events(&out)
+        .iter()
+        .filter(|e| e["event"] == "output")
+        .map(|e| e["stem"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(stems, ["vocals", "instrumental"]);
+    assert!(out_dir.join("vocals.wav").is_file() && out_dir.join("instrumental.wav").is_file());
+    assert!(!out_dir.join("lead_vocals.wav").exists());
+}

@@ -25,6 +25,7 @@ pub enum StageName {
 pub enum Stem {
     Lead,
     Backing,
+    Vocals,
     Instrumental,
 }
 
@@ -33,6 +34,7 @@ impl Stem {
         match self {
             Self::Lead => "lead_vocals.wav",
             Self::Backing => "backing_vocals.wav",
+            Self::Vocals => "vocals.wav",
             Self::Instrumental => "instrumental.wav",
         }
     }
