@@ -89,7 +89,7 @@ struct ContentView: View {
                 Text("VoxSplit")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(Theme.text)
-                Text("Lead and backing vocal separation, on this Mac")
+                Text("Split vocals, right on your Mac")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textDim)
             }
@@ -141,14 +141,14 @@ struct ContentView: View {
                                     accessibilityName: "Quality")
                         .frame(width: 124, height: 32)
                 }
-                PassesRow(name: "Vocal passes", caption: "Kim Vocal 2 · 0 = file is vocals", range: 0...5,
+                PassesRow(name: "Vocal passes", caption: "0 = file is vocals", range: 0...5,
                           value: Bindable(manager).vocalPasses)
                 PassesRow(name: "Refinement passes",
-                          caption: manager.quality == .best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)",
+                          caption: "More passes, cleaner lead",
                           range: 1...5, value: Bindable(manager).passes)
             } else {
                 // The vocal remover is the vocal stage on its own: at least one pass.
-                PassesRow(name: "Vocal passes", caption: "Kim Vocal 2", range: 1...5,
+                PassesRow(name: "Vocal passes", caption: "More passes, less bleed", range: 1...5,
                           value: Binding(get: { manager.effectiveVocalPasses },
                                          set: { manager.vocalPasses = $0 }))
             }
@@ -287,7 +287,7 @@ struct ContentView: View {
             "Stage \(manager.stageIndex) of \(manager.stageCount)   ·   \(Int((manager.progress * 100).rounded()))%"
                 + (manager.eta.map { "   ·   \(timeLeft($0))" } ?? "")
         case .finished:
-            manager.elapsed.map { String(format: "%.1f s on %@", $0, manager.device == "cpu" ? "CPU" : "CoreML") } ?? ""
+            manager.elapsed.map(took) ?? ""
         default:
             ""
         }

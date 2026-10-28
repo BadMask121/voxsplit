@@ -19,7 +19,7 @@ namespace
         };
 
         vox::SegmentedToggle quality { { "Best", "Fast" } };
-        Row vocal { "Vocal passes", "Kim Vocal 2 \xc2\xb7 0 = file is vocals", { 0, 5 }, {}, {} };
+        Row vocal { "Vocal passes", "0 = file is vocals", { 0, 5 }, {}, {} };
         Row refine { "Refinement passes", "", { 1, 5 }, {}, {} };
         juce::Rectangle<int> qualityLabel;
 
@@ -27,7 +27,7 @@ namespace
         {
             addAndMakeVisible (quality);
             quality.setSelected (best ? 0 : 1, false);
-            refine.role = best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)";
+            refine.role = "More passes, cleaner lead";
             vocal.slider.setValue (vocalPasses, false);
             refine.slider.setValue (refinePasses, false);
             for (auto* r : { &vocal, &refine })

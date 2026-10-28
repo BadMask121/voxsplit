@@ -33,13 +33,13 @@ namespace
         return juce::String (s / 60) + ":" + juce::String (s % 60).paddedLeft ('0', 2) + " left";
     }
 
-    juce::String deviceLabel (const juce::String& d)
+    /** "Took 42 s", "Took 2 min 18 s": no hardware jargon for people making music. */
+    juce::String took (double seconds)
     {
-        if (d == "coreml")   return "CoreML";
-        if (d == "cuda")     return "CUDA";
-        if (d == "directml") return "DirectML";
-        if (d == "cpu")      return "CPU";
-        return "Runs offline";
+        const auto s = juce::jmax (1, (int) std::round (seconds));
+        if (s < 60)
+            return "Took " + juce::String (s) + " s";
+        return "Took " + juce::String (s / 60) + " min" + (s % 60 != 0 ? " " + juce::String (s % 60) + " s" : juce::String());
     }
 }
 
@@ -128,8 +128,8 @@ void VoxSplitEditor::showTool()
     refineRow.slider.setVisible (! remover);
     // The vocal remover *is* the vocal stage, so it runs at least once.
     vocalRow.slider.setRange (remover ? 1 : 0, 5);
-    vocalRow.caption = remover ? juce::String ("Kim Vocal 2")
-                               : juce::String::fromUTF8 ("Kim Vocal 2 \xc2\xb7 0 = file is vocals");
+    // Captions say what a slider does; model names never reach the UI.
+    vocalRow.caption = remover ? "More passes, less bleed" : "0 = file is vocals";
     // The new tool's stems are different files; drop the old rows.
     clearStems();
     // The host resizes the window; no animation is possible across that boundary.
@@ -141,7 +141,7 @@ void VoxSplitEditor::showTool()
 void VoxSplitEditor::showQualityPasses (bool animate)
 {
     const auto q = processor.getQuality();
-    refineRow.caption = q == SeparationJob::Quality::best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)";
+    refineRow.caption = "More passes, cleaner lead";
     refineRow.slider.setValue (processor.getPasses (q), animate);
     repaint();
 }
@@ -285,7 +285,7 @@ void VoxSplitEditor::sync (bool initial)
         }
         case Phase::finished:
             progress.setState (ProgressStrip::Mode::done, 1.0f, "Done",
-                               s.elapsedSec > 0.0 ? juce::String (s.elapsedSec, 1) + " s on " + deviceLabel (device) : juce::String());
+                               s.elapsedSec > 0.0 ? took (s.elapsedSec) : juce::String());
             break;
         case Phase::idle: case Phase::failed: case Phase::cancelled:
             break;
@@ -446,10 +446,11 @@ void VoxSplitEditor::paint (juce::Graphics& g)
 
     g.setColour (colours::textDim);
     g.setFont (font (12.5f));
-    g.drawText ("Lead and backing vocal separation, on this Mac", header, juce::Justification::centredLeft);
+    g.drawText ("Split vocals, right on your Mac", header, juce::Justification::centredLeft);
 
     // Device chip.
-    const auto chipText = deviceLabel (device);
+    // The dot is green once hardware acceleration is on; the words stay friendly.
+    const juce::String chipText ("Runs offline");
     const auto chipFont = font (11.5f, true);
     const auto chipWidth = juce::GlyphArrangement::getStringWidth (chipFont, chipText) + 30.0f;
     const auto chip = headerArea.toFloat().removeFromRight (chipWidth).withSizeKeepingCentre (chipWidth, 24.0f).withY ((float) headerArea.getY());

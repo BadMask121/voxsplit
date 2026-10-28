@@ -279,13 +279,15 @@ void SeparationJob::handleLine (const juce::String& line)
     }
     else if (event == "stage")
     {
-        const auto model = json.getProperty ("model", {}).toString();
+        // The event names the model; the log shown to people doesn't.
         const auto device = json.getProperty ("device", {}).toString();
-        appendLog ("Stage " + json.getProperty ("index", 0).toString() + ": " + model + " on " + device);
+        appendLog ("Stage " + json.getProperty ("index", 0).toString() + " of "
+                   + json.getProperty ("stages", 2).toString() + " on " + device);
         update ([&] (Snapshot& s) {
             s.phase = Phase::running;
             s.stage = json.getProperty ("stage", {}).toString(); // vocals | vocals_refine | karaoke | refine
             s.stageIndex = (int) json.getProperty ("index", 0);
+            s.model = json.getProperty ("model", {}).toString();
             s.stages = (int) json.getProperty ("stages", s.stages);
             s.device = device;
             s.fraction = 0.0f;

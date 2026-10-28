@@ -103,17 +103,17 @@ struct SeparateArgs {
     /// Output folder [default: ~/Music/VoxSplit/<input name>].
     #[arg(long)]
     out_dir: Option<PathBuf>,
-    /// best: BS-RoFormer karaoke (cleaner, slower). fast: MDX-Net karaoke.
+    /// best: the cleanest split (slower). fast: quicker, a little less clean.
     #[arg(long, value_enum, default_value_t = Quality::Best)]
     quality: Quality,
     /// Folder holding the model files [default: the bundled models].
     #[arg(long)]
     models_dir: Option<PathBuf>,
-    /// Stage 1 model (mix → vocals) [default: Kim_Vocal_2.onnx].
-    #[arg(long)]
+    /// Development: a different vocal model file.
+    #[arg(long, hide = true)]
     vocal_model: Option<PathBuf>,
-    /// Lead/backing model [default: chosen by --quality].
-    #[arg(long)]
+    /// Development: a different lead/backing model file.
+    #[arg(long, hide = true)]
     karaoke_model: Option<PathBuf>,
     /// Vocal-extraction passes: 0 = the input is already vocals, 1 = usual,
     /// more = re-run on its own output to strip instrument bleed.
@@ -125,22 +125,22 @@ struct SeparateArgs {
     /// Also write instrumental.wav (mix − vocals).
     #[arg(long)]
     keep_instrumental: bool,
-    /// Karaoke passes: the first splits the vocals, each further pass pulls
+    /// Refinement passes: the first splits the vocals, each further pass pulls
     /// remaining backing vocals out of the lead [default: 1 best, 3 fast].
     #[arg(long, value_parser = clap::value_parser!(u8).range(1..=5))]
     passes: Option<u8>,
     #[arg(long, value_enum, default_value_t = Device::Auto)]
     device: Device,
     /// Fraction of each chunk shared with the next (higher = smoother, slower)
-    /// [default: per model, 0.75 RoFormer, 0.5 MDX].
+    /// [default: set per model].
     #[arg(long, value_parser = parse_overlap)]
     overlap: Option<f32>,
     /// Chunks per inference call.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     batch: u8,
-    /// Skip the denoise pass. By default each MDX model also runs on the phase-inverted
-    /// input and the two results are averaged, which cancels the faint constant hiss
-    /// MDX-Net adds to its outputs (about -70 dBFS, above 6 kHz). Costs 2x on MDX stages.
+    /// Skip the denoise pass. By default some models also run on the phase-inverted
+    /// input and the two results are averaged, which cancels a faint constant hiss
+    /// (about -70 dBFS, above 6 kHz). Costs 2x on those stages.
     #[arg(long)]
     no_denoise: bool,
     #[arg(long, value_enum, default_value_t = BitDepthArg::F32)]

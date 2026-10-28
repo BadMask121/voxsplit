@@ -52,7 +52,7 @@ private:
         vox::PassSlider slider;
         juce::Rectangle<int> label, value;
     };
-    PassRow vocalRow { "Vocal passes", juce::String::fromUTF8 ("Kim Vocal 2 \xc2\xb7 0 = file is vocals"), { 0, 5 }, {}, {} };
+    PassRow vocalRow { "Vocal passes", "0 = file is vocals", { 0, 5 }, {}, {} };
     PassRow refineRow { "Refinement passes", {}, { 1, 5 }, {}, {} };
     std::array<PassRow*, 2> passRows { &vocalRow, &refineRow };
 

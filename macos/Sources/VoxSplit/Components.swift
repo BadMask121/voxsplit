@@ -616,13 +616,13 @@ struct DeviceChip: View {
         .animation(Theme.easeOut(Theme.fade), value: device)
     }
 
-    private var label: String {
-        switch device {
-        case "coreml": "CoreML"
-        case "cuda": "CUDA"
-        case "directml": "DirectML"
-        case "cpu": "CPU"
-        default: "Runs offline"
-        }
-    }
+    /// The dot is green once hardware acceleration is on; the words stay friendly.
+    private var label: String { "Runs offline" }
+}
+
+/// "Took 42 s", "Took 2 min 18 s".
+func took(_ seconds: Double) -> String {
+    let s = max(1, Int(seconds.rounded()))
+    if s < 60 { return "Took \(s) s" }
+    return s % 60 == 0 ? "Took \(s / 60) min" : "Took \(s / 60) min \(s % 60) s"
 }

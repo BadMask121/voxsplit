@@ -221,13 +221,14 @@ final class ProcessManager {
         case .start(let stages, _, _, let estimate):
             stageCount = stages
             eta = estimate
-        case .stage(let name, let index, let stages, let model, let device):
+        case .stage(let name, let index, let stages, _, let device):
             phase = .running
             stage = name
             stageIndex = index
             stageCount = stages
             self.device = device
-            appendLog("Stage \(index): \(model) on \(device)", isError: false)
+            // The event names the model; the log shown to people doesn't.
+            appendLog("Stage \(index) of \(stages) on \(device)", isError: false)
         case .progress(_, _, let overall, let secondsLeft):
             progress = overall
             if let secondsLeft { eta = secondsLeft }

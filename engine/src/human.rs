@@ -65,12 +65,13 @@ pub fn render(event: &Event) {
                 ))
             );
         }
+        // The event names the model; what people read doesn't.
         Event::Stage {
             stage,
             index,
             stages,
-            model,
             device,
+            ..
         } => {
             state.last_drawn = None;
             let _ = writeln!(
@@ -78,7 +79,7 @@ pub fn render(event: &Event) {
                 "{} {}  {}",
                 style.dim(&format!("[{index}/{stages}]")),
                 stage_label(stage),
-                style.dim(&format!("{model} on {}", device_label(device)))
+                style.dim(&format!("on {}", device_label(device)))
             );
         }
         Event::Progress {

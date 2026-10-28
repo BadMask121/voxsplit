@@ -51,6 +51,7 @@ public:
         float fraction = 0.0f;   // within the current stage
         float overall = 0.0f;
         juce::String device;     // "coreml", "cpu", ...
+        juce::String model;      // the current stage's model: diagnostics and tests only, never shown
         double durationSec = 0.0;
         double elapsedSec = 0.0;
         double etaSec = -1.0;     // seconds left, -1 until the engine says

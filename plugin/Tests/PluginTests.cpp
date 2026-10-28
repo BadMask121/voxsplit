@@ -121,7 +121,9 @@ public:
             const auto s = job.snapshot();
             expect (s.phase == SeparationJob::Phase::finished, "phase finished; error: " + s.error);
             expectEquals (s.outputs.size(), 2);
-            expect (s.log.joinIntoString ("\n").contains ("RoFormer"), "the karaoke stage used the RoFormer");
+            expect (s.model.contains ("RoFormer"), "the karaoke stage used the RoFormer, got: " + s.model);
+            for (const auto& line : s.log)
+                expect (! line.containsIgnoreCase ("roformer") && ! line.containsIgnoreCase ("kim"), "no model names in the log: " + line);
             expect (s.etaSec >= 0.0 && s.etaSec < 5.0, "countdown reached ~0 at the end, got " + juce::String (s.etaSec));
         }
 
