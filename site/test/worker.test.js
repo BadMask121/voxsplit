@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import { fillScript, megabytes, movedTo, pkgPath, publicOrigin, rangeOf } from "../src/worker.js";
+import { fillScript, megabytes, movedTo, pkgPath, publicOrigin, rangeOf } from "../src/lib.js";
 
 const release = { version: "1.2.3", file: "VoxSplit-1.2.3.pkg", sha256: "ab".repeat(32), bytes: 320_955_082, date: "2026-10-28" };
 

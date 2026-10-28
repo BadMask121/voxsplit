@@ -290,6 +290,46 @@ main > section {
   .marquee:hover .marquee-track { animation-play-state: paused; }
 }
 
+/* ---------- Keyword strip (under the banner) ---------- */
+
+main > .chip-strip { padding-top: 28px; }
+.keyword-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.keyword-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 15px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--text-dim);
+  font: 600 14.5px/1.2 var(--sans);
+  white-space: nowrap;
+}
+.keyword-chips li::before {
+  content: "";
+  flex: none;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+.keyword-chips li:nth-child(4n + 1) { --dot: var(--lead); }
+.keyword-chips li:nth-child(4n + 2) { --dot: var(--pink); }
+.keyword-chips li:nth-child(4n + 3) { --dot: var(--backing); }
+.keyword-chips li:nth-child(4n + 4) { --dot: var(--inst); }
+@media (max-width: 560px) {
+  .keyword-chips { justify-content: flex-start; gap: 8px; }
+  .keyword-chips li { font-size: 13.5px; padding: 7px 13px 7px 11px; }
+}
+
 /* ---------- Cards ---------- */
 
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
@@ -382,6 +422,37 @@ main > section {
   font-size: 15px;
 }
 .hint b { color: var(--text); }
+
+/* Feature points in the FL Studio section: a check in a stem colour per line. */
+.fl-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.fl-points li {
+  position: relative;
+  padding-left: 36px;
+  color: var(--text-dim);
+  font-size: 16px;
+}
+.fl-points li b { color: var(--text); }
+.fl-points li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 1px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--dot) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dot) 45%, transparent);
+}
+.fl-points li::after {
+  content: "";
+  position: absolute;
+  left: 8px; top: 9px;
+  width: 8px; height: 4px;
+  border-left: 2px solid var(--dot);
+  border-bottom: 2px solid var(--dot);
+  rotate: -45deg;
+}
+.fl-points li:nth-child(3n + 1) { --dot: var(--lead); }
+.fl-points li:nth-child(3n + 2) { --dot: var(--backing); }
+.fl-points li:nth-child(3n + 3) { --dot: var(--inst); }
 
 /* ---------- Get it ---------- */
 

@@ -2,18 +2,7 @@
 // script, serves installers from R2 (with resumable range requests), and redirects
 // the site's first home, voxsplit.triplejmusic.art.
 import release from "../release.json" with { type: "json" };
-
-export const pkgPath = (r = release) => `/download/${r.file}`;
-export const megabytes = (bytes) => `${Math.round(bytes / 1_000_000)} MB`;
-
-/** The site moved here from voxsplit.triplejmusic.art, which now redirects. */
-export const HOME = "voxsplit.jeffrey.build";
-
-/** Old-host URLs go to the same path on the new host (curl -L follows it, so copied
-    install commands keep working). */
-export function movedTo(url) {
-  return url.hostname === "voxsplit.triplejmusic.art" ? `https://${HOME}${url.pathname}${url.search}` : null;
-}
+import { fillScript, megabytes, movedTo, pkgPath, publicOrigin, rangeOf } from "./lib.js";
 
 export default {
   async fetch(request, env) {
@@ -89,16 +78,6 @@ async function download(request, env, key) {
   return new Response(object.body, { headers });
 }
 
-/** R2 reports `{offset, length}` or `{suffix}`; normalise to offset/length. */
-export function rangeOf(range, size) {
-  if ("suffix" in range) {
-    const length = Math.min(range.suffix, size);
-    return { offset: size - length, length };
-  }
-  const offset = range.offset ?? 0;
-  return { offset, length: range.length ?? size - offset };
-}
-
 async function installScript(request, env, url) {
   const asset = await env.ASSETS.fetch(new Request(new URL("/install.template.sh", url), request));
   if (!asset.ok) {
@@ -112,19 +91,6 @@ async function installScript(request, env, url) {
       "X-Content-Type-Options": "nosniff",
     },
   });
-}
-
-/** Downloads are always https, except when developing locally. */
-export function publicOrigin(url) {
-  return url.hostname === "localhost" || url.hostname === "127.0.0.1" ? url.origin : `https://${url.host}`;
-}
-
-export function fillScript(template, origin, r = release) {
-  return template
-    .replaceAll("__VERSION__", r.version)
-    .replaceAll("__URL__", `${origin}${pkgPath(r)}`)
-    .replaceAll("__SHA256__", r.sha256)
-    .replaceAll("__SIZE__", megabytes(r.bytes));
 }
 
 async function page(request, env, url) {
