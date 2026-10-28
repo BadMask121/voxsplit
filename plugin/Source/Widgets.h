@@ -85,6 +85,7 @@ public:
 
     void setValue (int value, bool animate);
     int getValue() const noexcept { return value; }
+    void setRange (int newMin, int newMax);
 
 private:
     void paint (juce::Graphics&) override;

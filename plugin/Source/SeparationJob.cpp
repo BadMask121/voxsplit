@@ -73,8 +73,8 @@ bool SeparationJob::isActive() const
     return isThreadRunning();
 }
 
-bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, Quality quality,
-                           int passes, int vocalPasses, const EngineLocation& loc)
+bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, const Settings& settings,
+                           const EngineLocation& loc)
 {
     if (isThreadRunning())
         return false;
@@ -104,9 +104,10 @@ bool SeparationJob::start (const juce::File& input, const juce::File& outputFold
     args.add ("--input=" + input.getFullPathName());
     args.add ("--out-dir=" + outDir.getFullPathName());
     args.add ("--models-dir=" + loc.modelsDir.getFullPathName());
-    args.add (quality == Quality::best ? "--quality=best" : "--quality=fast");
-    args.add ("--passes=" + juce::String (juce::jlimit (1, 5, passes)));
-    args.add ("--vocal-passes=" + juce::String (juce::jlimit (0, 5, vocalPasses)));
+    args.add (settings.tool == Tool::vocalRemover ? "--tool=vocal-remover" : "--tool=lead-backing");
+    args.add (settings.quality == Quality::best ? "--quality=best" : "--quality=fast");
+    args.add ("--passes=" + juce::String (juce::jlimit (1, 5, settings.passes)));
+    args.add ("--vocal-passes=" + juce::String (juce::jlimit (0, 5, settings.vocalPasses)));
 
     cancelRequested = false;
     sawDone = sawCancelled = false;

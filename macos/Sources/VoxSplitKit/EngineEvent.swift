@@ -14,7 +14,7 @@ public enum EngineEvent: Sendable, Equatable {
     }
 
     public enum Stem: String, Sendable {
-        case lead, backing, instrumental
+        case lead, backing, vocals, instrumental
     }
 
     case start(stages: Int, durationSec: Double, sampleRate: Int, estimateSec: Double?)
@@ -31,6 +31,11 @@ public enum EngineEvent: Sendable, Equatable {
                     bestSec: Double, bestPassSec: Double, fastSec: Double, fastPassSec: Double) {
             (self.durationSec, self.vocalSec, self.vocalPassSec) = (durationSec, vocalSec, vocalPassSec)
             (self.bestSec, self.bestPassSec, self.fastSec, self.fastPassSec) = (bestSec, bestPassSec, fastSec, fastPassSec)
+        }
+
+        /// Expected seconds for the vocal remover: just the vocal stage.
+        public func vocalRemoverTotal(vocalPasses: Int) -> Double {
+            vocalSec + Double(max(0, vocalPasses - 1)) * vocalPassSec
         }
 
         /// Expected seconds for a quality with `passes` karaoke and `vocalPasses` vocal passes.

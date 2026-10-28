@@ -69,7 +69,7 @@ struct ContentView: View {
         .focusEffectDisabled()
         .onKeyPress(.space) {
             // Space previews the lead, or stops whatever is playing. Keyboard: no animation.
-            guard let lead = manager.stems.first(where: { $0.kind == .lead }) else { return .ignored }
+            guard let lead = manager.stems.first(where: { $0.kind == .lead || $0.kind == .vocals }) else { return .ignored }
             if player.playing != nil { player.stop() } else { player.play(lead.url) }
             return .handled
         }
@@ -128,27 +128,48 @@ struct ContentView: View {
     /// many times the lead/backing model (whichever the quality uses) runs.
     private var settingsBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 0) {
-                Text("Quality")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Theme.textDim)
-                    .frame(width: 150, alignment: .leading)
-                QualityToggle(quality: Bindable(manager).quality)
-                    .frame(width: 124, height: 32)
+            settingLabel("Tool") {
+                SegmentedPicker(selection: Bindable(manager).tool,
+                                options: [(.leadBacking, "Lead & Backing"), (.vocalRemover, "Vocal Remover")],
+                                accessibilityName: "Tool")
+                    .frame(width: 248, height: 32)
             }
-            PassesRow(name: "Vocal passes", caption: "Kim Vocal 2 · 0 = file is vocals", range: 0...5,
-                      value: Bindable(manager).vocalPasses)
-            PassesRow(name: "Refinement passes",
-                      caption: manager.quality == .best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)",
-                      range: 1...5, value: Bindable(manager).passes)
+            if manager.tool == .leadBacking {
+                settingLabel("Quality") {
+                    SegmentedPicker(selection: Bindable(manager).quality,
+                                    options: [(.best, "Best"), (.fast, "Fast")],
+                                    accessibilityName: "Quality")
+                        .frame(width: 124, height: 32)
+                }
+                PassesRow(name: "Vocal passes", caption: "Kim Vocal 2 · 0 = file is vocals", range: 0...5,
+                          value: Bindable(manager).vocalPasses)
+                PassesRow(name: "Refinement passes",
+                          caption: manager.quality == .best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)",
+                          range: 1...5, value: Bindable(manager).passes)
+            } else {
+                // The vocal remover is the vocal stage on its own: at least one pass.
+                PassesRow(name: "Vocal passes", caption: "Kim Vocal 2", range: 1...5,
+                          value: Binding(get: { manager.effectiveVocalPasses },
+                                         set: { manager.vocalPasses = $0 }))
+            }
         }
         .disabled(manager.phase.isActive)
     }
 
+    private func settingLabel(_ title: String, @ViewBuilder control: () -> some View) -> some View {
+        HStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textDim)
+                .frame(width: 150, alignment: .leading)
+            control()
+        }
+    }
+
     @ViewBuilder private var stemsArea: some View {
-        let shown = manager.stems
-            .filter { $0.kind != .instrumental }
-            .sorted { $0.kind == .lead && $1.kind != .lead }
+        // Each tool shows its own pair, in a fixed order.
+        let order: [EngineEvent.Stem] = manager.tool == .vocalRemover ? [.vocals, .instrumental] : [.lead, .backing]
+        let shown = order.compactMap { kind in manager.stems.first { $0.kind == kind } }
         if manager.phase == .finished && !shown.isEmpty {
             VStack(spacing: 8) {
                 ForEach(Array(shown.enumerated()), id: \.element.id) { index, stem in
@@ -159,7 +180,8 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
                 .overlay {
-                    Text("Lead and backing stems will appear here")
+                    Text(manager.tool == .vocalRemover ? "Vocals and instrumental will appear here"
+                                                       : "Lead and backing stems will appear here")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.textDim.opacity(0.7))
                 }
@@ -276,8 +298,8 @@ struct ContentView: View {
             if manager.input == nil {
                 ""
             } else if let seconds = manager.estimatedSeconds {
-                manager.vocalPasses == 0
-                    ? "Takes \(aboutDuration(seconds)). Kim Vocal 2 is off: the file must be vocals only."
+                manager.tool == .leadBacking && manager.vocalPasses == 0
+                    ? "Takes \(aboutDuration(seconds)). Vocal passes is 0: the file must be vocals only."
                     : "Takes \(aboutDuration(seconds)) with these settings"
             } else {
                 "Estimating time…"

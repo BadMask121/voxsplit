@@ -16,6 +16,7 @@ namespace colours
     inline const juce::Colour textDim    { 0xff9b9ba4 };
     inline const juce::Colour lead       { 0xffff8a5b };
     inline const juce::Colour backing    { 0xff7c9cff };
+    inline const juce::Colour instrumental { 0xff4fd1c5 };
     inline const juce::Colour success    { 0xff4cd38a };
     inline const juce::Colour danger     { 0xffff6359 };
 }

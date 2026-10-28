@@ -64,6 +64,16 @@ public:
         (q == SeparationJob::Quality::best ? passesBest : passesFast) = juce::jlimit (1, 5, n);
     }
 
+    SeparationJob::Tool getTool() const noexcept { return tool.load(); }
+    void setTool (SeparationJob::Tool t) noexcept { tool = t; }
+
+    /** Everything the next run should use, from the current settings. */
+    SeparationJob::Settings currentSettings() const noexcept
+    {
+        const auto q = getQuality();
+        return { getTool(), q, getPasses (q), getVocalPasses() };
+    }
+
     /** Kim Vocal 2 passes; 0 = the input is already vocals. Shared by both qualities. */
     int getVocalPasses() const noexcept { return vocalPasses.load(); }
     void setVocalPasses (int n) noexcept { vocalPasses = juce::jlimit (0, 5, n); }
@@ -80,6 +90,7 @@ private:
     juce::File inputFile;
     std::atomic<SeparationJob::Quality> quality { SeparationJob::Quality::best };
     std::atomic<int> passesBest { 1 }, passesFast { 3 }, vocalPasses { 1 };
+    std::atomic<SeparationJob::Tool> tool { SeparationJob::Tool::leadBacking };
     std::shared_ptr<SeparationJob::Estimate> estimate = std::make_shared<SeparationJob::Estimate>();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxSplitProcessor)

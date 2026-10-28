@@ -57,6 +57,7 @@ struct EngineEventTests {
         #expect(args.contains("--quality=best"))
         #expect(args.contains("--passes=2"))
         #expect(args.contains("--vocal-passes=0"))
+        #expect(args.contains("--tool=lead-backing"))
         #expect(location.estimateArguments(input: input).first == "estimate")
     }
 
@@ -66,6 +67,7 @@ struct EngineEventTests {
         #expect(e.total(.best, passes: 1, vocalPasses: 1) == 120)
         #expect(e.total(.best, passes: 2, vocalPasses: 3) == 120 + 90 + 22)
         #expect(e.total(.fast, passes: 3, vocalPasses: 0) == 30 + 10 - 12)
+        #expect(e.vocalRemoverTotal(vocalPasses: 2) == 12 + 11)
     }
 
     @Test func `output folder mirrors the plugin's`() {

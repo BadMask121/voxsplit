@@ -300,6 +300,13 @@ void PassSlider::setValue (int newValue, bool animate)
     repaint();
 }
 
+void PassSlider::setRange (int newMin, int newMax)
+{
+    minValue = newMin;
+    maxValue = juce::jmax (newMin + 1, newMax);
+    setValue (value, false);
+}
+
 float PassSlider::xFor (float position) const
 {
     const auto inset = 9.0f;

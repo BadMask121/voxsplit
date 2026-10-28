@@ -17,6 +17,13 @@ song.wav ─► Kim Vocal 2 ─► vocals ─► karaoke model ─► lead_vocal
 | **Best** (default) | BS-RoFormer karaoke, Core ML GPU | ~2 min (first run ever: about +1 min to compile) |
 | **Fast** | MDX-Net karaoke, 3 passes | ~23 s |
 
+Two tools, in both the plugin and the app:
+
+- **Lead & Backing**: the pipeline above. *Vocal passes* (0–5) sets how many times
+  Kim Vocal 2 runs (0 = the file is already vocals); *Refinement passes* (1–5) sets
+  how many times the lead/backing model runs.
+- **Vocal Remover**: `vocals.wav` + `instrumental.wav` from the vocal stage alone.
+
 Both UIs show the expected time as soon as you choose a song, and a countdown
 while it runs. Estimates learn from each run on your Mac.
 

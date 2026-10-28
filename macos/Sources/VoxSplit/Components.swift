@@ -110,25 +110,29 @@ private struct ScaleOnPress: ButtonStyle {
 
 // MARK: - Quality toggle
 
-/// Best / Fast. The highlight slides between the two (on-screen movement: ease-in-out).
-struct QualityToggle: View {
-    @Binding var quality: Quality
+/// Mutually exclusive options; the highlight slides between them
+/// (on-screen movement: ease-in-out).
+struct SegmentedPicker<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+    var accessibilityName: String
+
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var pill
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Quality.allCases, id: \.self) { option in
-                let selected = option == quality
-                Text(option == .best ? "Best" : "Fast")
+            ForEach(options, id: \.0) { option, label in
+                let selected = option == selection
+                Text(label)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(selected ? Theme.text : Theme.textDim)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background {
                         if selected {
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Theme.surfaceHi.opacity(1))
+                                .fill(Theme.surfaceHi)
                                 .brightness(0.06)
                                 .matchedGeometryEffect(id: "pill", in: pill)
                         }
@@ -137,7 +141,7 @@ struct QualityToggle: View {
                     .onTapGesture {
                         guard isEnabled, !selected else { return }
                         withAnimation(reduceMotion ? nil : .timingCurve(0.77, 0, 0.175, 1, duration: 0.2)) {
-                            quality = option
+                            selection = option
                         }
                     }
                     .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
@@ -148,7 +152,7 @@ struct QualityToggle: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border, lineWidth: 1))
         .opacity(isEnabled ? 1 : 0.45)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Quality")
+        .accessibilityLabel(accessibilityName)
     }
 }
 
@@ -443,15 +447,29 @@ struct StemRowView: View {
     @State private var appeared = false
     @State private var hovering = false
 
-    private var isLead: Bool { stem.kind == .lead }
-    private var accent: Color { isLead ? Theme.lead : Theme.backing }
+    private var title: String {
+        switch stem.kind {
+        case .lead: "Lead vocals"
+        case .backing: "Backing vocals"
+        case .vocals: "Vocals"
+        case .instrumental: "Instrumental"
+        }
+    }
+
+    private var accent: Color {
+        switch stem.kind {
+        case .lead, .vocals: Theme.lead
+        case .backing: Theme.backing
+        case .instrumental: Theme.instrumental
+        }
+    }
     private var isPlaying: Bool { player.playing == stem.url }
 
     var body: some View {
         HStack(spacing: 12) {
             Circle().fill(accent).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
-                Text(isLead ? "Lead vocals" : "Backing vocals")
+                Text(title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.text)
                 Text("\(stem.url.lastPathComponent) · drag into your project")
@@ -494,7 +512,7 @@ struct StemRowView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(isLead ? "Lead vocals" : "Backing vocals")
+        .accessibilityLabel(title)
     }
 }
 

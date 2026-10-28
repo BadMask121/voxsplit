@@ -5,6 +5,12 @@ public enum Quality: String, Sendable, CaseIterable {
     case best, fast
 }
 
+/// leadBacking: lead_vocals.wav + backing_vocals.wav. vocalRemover: vocals.wav + instrumental.wav.
+public enum Tool: String, Sendable, CaseIterable {
+    case leadBacking = "lead-backing"
+    case vocalRemover = "vocal-remover"
+}
+
 /// Where the engine binary and its models live (docs/01-architecture.md).
 public struct EngineLocation: Sendable, Equatable {
     public let engine: URL
@@ -17,9 +23,10 @@ public struct EngineLocation: Sendable, Equatable {
 
     /// argv for `separate`, one `--flag=value` element per option.
     public func separateArguments(input: URL, outputFolder: URL, quality: Quality, passes: Int,
-                                  vocalPasses: Int = 1) -> [String] {
+                                  vocalPasses: Int = 1, tool: Tool = .leadBacking) -> [String] {
         [
             "separate",
+            "--tool=\(tool.rawValue)",
             "--input=\(input.path(percentEncoded: false))",
             "--out-dir=\(outputFolder.path(percentEncoded: false))",
             "--models-dir=\(modelsDir.path(percentEncoded: false))",

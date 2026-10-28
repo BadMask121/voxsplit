@@ -49,6 +49,18 @@ final class ProcessManager {
     /// Seconds left in the current run, as the engine last reported.
     private(set) var eta: Double?
 
+    /// What a run produces; remembered across launches. Switching clears the
+    /// previous tool's stems, which are different files.
+    var tool: Tool = Tool(rawValue: UserDefaults.standard.string(forKey: "tool") ?? "") ?? .leadBacking {
+        didSet {
+            UserDefaults.standard.set(tool.rawValue, forKey: "tool")
+            if tool != oldValue, !phase.isActive {
+                stems = []
+                if phase == .finished { phase = .idle }
+            }
+        }
+    }
+
     /// Remembered across launches.
     var quality: Quality = Quality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .best {
         didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") }
@@ -88,9 +100,17 @@ final class ProcessManager {
 
     private var storedVocalPasses: Int = (UserDefaults.standard.object(forKey: "passes.vocals") as? Int) ?? 1
 
+    /// Vocal passes a run will use: the vocal remover *is* the vocal stage, so at least 1.
+    var effectiveVocalPasses: Int {
+        tool == .vocalRemover ? max(1, vocalPasses) : vocalPasses
+    }
+
     /// Expected seconds for the current settings, if known.
     var estimatedSeconds: Double? {
-        estimates?.total(quality, passes: passes, vocalPasses: vocalPasses)
+        guard let estimates else { return nil }
+        return tool == .vocalRemover
+            ? estimates.vocalRemoverTotal(vocalPasses: effectiveVocalPasses)
+            : estimates.total(quality, passes: passes, vocalPasses: vocalPasses)
     }
 
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -162,7 +182,8 @@ final class ProcessManager {
             outputFolder: EngineLocator.defaultOutputFolder(for: input),
             quality: quality,
             passes: passes,
-            vocalPasses: vocalPasses
+            vocalPasses: effectiveVocalPasses,
+            tool: tool
         )
         eta = nil
 

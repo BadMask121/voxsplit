@@ -39,6 +39,7 @@ private:
     DropZone dropZone;
     vox::PressableButton primary { "Separate", vox::PressableButton::Style::primary };
     vox::PressableButton logToggle { "Show log", vox::PressableButton::Style::link };
+    vox::SegmentedToggle tool { { "Lead & Backing", "Vocal Remover" } };
     vox::SegmentedToggle quality { { "Best", "Fast" } };
 
     /** A pass-count slider: label, caption, slider, and where its text draws. */
@@ -64,7 +65,12 @@ private:
     int shownLogSize = -1;
     juce::String status, device;
     juce::Colour statusColour;
-    juce::Rectangle<int> headerArea, statusArea, rowsArea, qualityLabelArea;
+    juce::Rectangle<int> headerArea, statusArea, rowsArea, toolLabelArea, qualityLabelArea;
+
+    bool vocalRemover() const { return processor.getTool() == SeparationJob::Tool::vocalRemover; }
+    /** Show or hide the lead/backing-only controls for the current tool. */
+    void showTool();
+    int editorHeight() const;
     bool logOpen = false;
     vox::Tween progressAlpha;
 

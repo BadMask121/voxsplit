@@ -24,6 +24,18 @@ public:
     /** best: BS-RoFormer karaoke (cleaner, slower). fast: MDX-Net karaoke, 3 passes. */
     enum class Quality { best, fast };
 
+    /** leadBacking: lead_vocals.wav + backing_vocals.wav. vocalRemover: vocals.wav + instrumental.wav. */
+    enum class Tool { leadBacking, vocalRemover };
+
+    /** What a run should do; mirrors the engine's flags. */
+    struct Settings
+    {
+        Tool tool = Tool::leadBacking;
+        Quality quality = Quality::best;
+        int passes = 1;      // karaoke passes (lead/backing only)
+        int vocalPasses = 1; // Kim Vocal 2 passes; 0 = file is vocals (lead/backing only)
+    };
+
     struct Output
     {
         juce::String stem; // "lead", "backing", "instrumental"
@@ -52,8 +64,8 @@ public:
     ~SeparationJob() override;
 
     /** Returns false (and records why) if a run is already active or the engine is missing. */
-    bool start (const juce::File& input, const juce::File& outDir, Quality quality, int passes,
-                int vocalPasses, const EngineLocation& location = locateEngine());
+    bool start (const juce::File& input, const juce::File& outDir, const Settings& settings,
+                const EngineLocation& location = locateEngine());
     void cancel();
 
     /** Rebuilds a finished state from a saved project, if the stems still exist. */
@@ -74,7 +86,15 @@ public:
                             vocalSec { 0.0 }, vocalPassSec { 0.0 };
         std::atomic<juce::uint32> version { 0 };
 
-        /** Expected total, or a negative number while still estimating. */
+        /** Expected total for a run, or a negative number while still estimating. */
+        double total (const Settings& s) const
+        {
+            if (s.tool == Tool::vocalRemover)
+                return bestSec.load() < 0.0 ? -1.0
+                                            : vocalSec.load() + (double) juce::jmax (0, s.vocalPasses - 1) * vocalPassSec.load();
+            return total (s.quality, s.passes, s.vocalPasses);
+        }
+
         double total (Quality q, int passes, int vocalPasses) const
         {
             const auto base = q == Quality::best ? bestSec.load() : fastSec.load();

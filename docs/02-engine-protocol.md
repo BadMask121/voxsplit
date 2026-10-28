@@ -35,6 +35,7 @@ RoFormer for Core ML, which is about a minute slower once.
 
 | Flag | Default | Notes |
 | --- | --- | --- |
+| `--tool=lead-backing\|vocal-remover` | `lead-backing` | **lead-backing**: `lead_vocals.wav` + `backing_vocals.wav`. **vocal-remover**: the vocal stage only, writing `vocals.wav` + `instrumental.wav` (at least one vocal pass). |
 | `--input=<path>` | required | wav, aiff, flac, mp3, m4a/aac (decoded by symphonia). Mono is upmixed; >2 channels rejected. |
 | `--out-dir=<path>` | `~/Music/VoxSplit/<input stem>` | Created if missing. Existing stems are replaced atomically. |
 | `--quality=best\|fast` | `best` | **best**: BS-RoFormer karaoke (frazer & becruily), cleaner and about 6× slower. **fast**: UVR-MDX-NET Karaoke 2. |
@@ -77,7 +78,7 @@ warnings, panics).
 | `stage` | `stage` (`vocals`\|`vocals_refine`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
 | `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally), `eta_sec` (seconds left: the measured rate of the current stage plus estimates for later ones) | after each chunk (throttled to ≥0.5% steps) |
 | `log` | `level` (`info`\|`warn`), `message` | notable milestones |
-| `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
+| `output` | `stem` (`lead`\|`backing`\|`vocals`\|`instrumental`), `path` | a stem has been finalised on disk |
 | `done` | `elapsed_sec` | success, just before exit 0 |
 | `cancelled` | — | SIGTERM/SIGINT or parent died, just before exit 130 |
 | `error` | `code`, `message` | fatal, just before a non-zero exit |

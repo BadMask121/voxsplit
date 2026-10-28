@@ -10,6 +10,7 @@ enum Theme {
     static let textDim = Color(hex: 0x9B9BA4)
     static let lead = Color(hex: 0xFF8A5B)
     static let backing = Color(hex: 0x7C9CFF)
+    static let instrumental = Color(hex: 0x4FD1C5)
     static let success = Color(hex: 0x4CD38A)
     static let danger = Color(hex: 0xFF6359)
 

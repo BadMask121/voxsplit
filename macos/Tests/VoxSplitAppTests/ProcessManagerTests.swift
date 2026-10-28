@@ -84,6 +84,23 @@ struct ProcessManagerTests {
         #expect((manager.elapsed ?? 0) > 0)
     }
 
+    @Test func `vocal remover returns vocals and instrumental`() async throws {
+        defer { cleanUp() }
+        let manager = ProcessManager()
+        manager.tool = .vocalRemover
+        defer { manager.tool = .leadBacking }
+        manager.vocalPasses = 0 // the remover still runs the vocal stage once
+        defer { manager.vocalPasses = 1 }
+        #expect(manager.effectiveVocalPasses == 1)
+        manager.choose(input)
+        manager.start()
+        for _ in 0..<1200 where manager.phase.isActive {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(manager.phase == .finished)
+        #expect(Set(manager.stems.map(\.kind)) == [.vocals, .instrumental])
+    }
+
     @Test func `passes are remembered per quality`() {
         let manager = ProcessManager()
         manager.quality = .best

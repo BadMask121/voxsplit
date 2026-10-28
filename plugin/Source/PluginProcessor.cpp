@@ -75,6 +75,7 @@ void VoxSplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     state.setProperty ("passesBest", getPasses (SeparationJob::Quality::best), nullptr);
     state.setProperty ("passesFast", getPasses (SeparationJob::Quality::fast), nullptr);
     state.setProperty ("vocalPasses", getVocalPasses(), nullptr);
+    state.setProperty ("tool", getTool() == SeparationJob::Tool::vocalRemover ? "vocal-remover" : "lead-backing", nullptr);
 
     const auto snap = job.snapshot();
     if (snap.phase == SeparationJob::Phase::finished)
@@ -108,6 +109,8 @@ void VoxSplitProcessor::setStateInformation (const void* data, int sizeInBytes)
     setPasses (SeparationJob::Quality::best, (int) state.getProperty ("passesBest", 1));
     setPasses (SeparationJob::Quality::fast, (int) state.getProperty ("passesFast", 3));
     setVocalPasses ((int) state.getProperty ("vocalPasses", 1));
+    setTool (state.getProperty ("tool").toString() == "vocal-remover" ? SeparationJob::Tool::vocalRemover
+                                                                      : SeparationJob::Tool::leadBacking);
 
     juce::Array<SeparationJob::Output> outputs;
     for (const auto& o : state)

@@ -6,7 +6,9 @@ using Phase = SeparationJob::Phase;
 namespace
 {
     constexpr int width = 540;
-    constexpr int baseHeight = 610;
+    // Without the log; Vocal Remover hides two settings rows (quality + refinement).
+    constexpr int baseHeight = 648;
+    constexpr int leadBackingOnlyHeight = 32 + 6 + 34 + 6;
     constexpr int logHeight = 150;
 
     juce::String percent (float f) { return juce::String (juce::roundToInt (f * 100.0f)) + "%"; }
@@ -56,6 +58,14 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     addAndMakeVisible (logToggle);
     logToggle.onClick = [this] { toggleLog(); };
 
+    addAndMakeVisible (tool);
+    tool.setSelected (vocalRemover() ? 1 : 0, false);
+    tool.onChange = [this] (int index) {
+        processor.setTool (index == 1 ? SeparationJob::Tool::vocalRemover : SeparationJob::Tool::leadBacking);
+        showTool();
+        sync (false);
+    };
+
     addAndMakeVisible (quality);
     quality.setSelected (processor.getQuality() == SeparationJob::Quality::fast ? 1 : 0, false);
     quality.onChange = [this] (int index) {
@@ -73,6 +83,7 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
         addAndMakeVisible (row->slider);
     }
     showQualityPasses (false);
+    showTool();
 
     addAndMakeVisible (progress);
     progress.setAlpha (0.0f);
@@ -91,7 +102,7 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     if (const auto input = processor.getInputFile(); input.existsAsFile())
         dropZone.setFile (input, processor.describe (input));
 
-    setSize (width, baseHeight);
+    setSize (width, editorHeight());
     sync (true);
 }
 
@@ -99,6 +110,28 @@ VoxSplitEditor::~VoxSplitEditor()
 {
     // With the window gone there'd be no way to stop it.
     preview.stop();
+}
+
+int VoxSplitEditor::editorHeight() const
+{
+    return baseHeight - (vocalRemover() ? leadBackingOnlyHeight : 0) + (logOpen ? logHeight : 0);
+}
+
+void VoxSplitEditor::showTool()
+{
+    const bool remover = vocalRemover();
+    quality.setVisible (! remover);
+    refineRow.slider.setVisible (! remover);
+    // The vocal remover *is* the vocal stage, so it runs at least once.
+    vocalRow.slider.setRange (remover ? 1 : 0, 5);
+    vocalRow.caption = remover ? juce::String ("Kim Vocal 2")
+                               : juce::String::fromUTF8 ("Kim Vocal 2 \xc2\xb7 0 = file is vocals");
+    // The new tool's stems are different files; drop the old rows.
+    rows.clear();
+    // The host resizes the window; no animation is possible across that boundary.
+    setSize (width, editorHeight());
+    resized();
+    repaint();
 }
 
 void VoxSplitEditor::showQualityPasses (bool animate)
@@ -145,8 +178,7 @@ void VoxSplitEditor::primaryClicked()
 
     preview.stop(); // the stems being previewed are about to be replaced
     rows.clear();
-    job.start (input, SeparationJob::defaultOutputFolder (input), processor.getQuality(),
-               processor.getPasses (processor.getQuality()), processor.getVocalPasses());
+    job.start (input, SeparationJob::defaultOutputFolder (input), processor.currentSettings());
 }
 
 void VoxSplitEditor::toggleLog()
@@ -155,7 +187,7 @@ void VoxSplitEditor::toggleLog()
     logToggle.setLabel (logOpen ? "Hide log" : "Show log");
     console.setVisible (logOpen);
     // The host resizes the window; no animation is possible across that boundary.
-    setSize (width, baseHeight + (logOpen ? logHeight : 0));
+    setSize (width, editorHeight());
 }
 
 bool VoxSplitEditor::keyPressed (const juce::KeyPress& key)
@@ -213,6 +245,7 @@ void VoxSplitEditor::sync (bool initial)
 
     dropZone.setEnabled (! active);
     quality.setEnabled (! active);
+    tool.setEnabled (! active);
     for (auto* row : passRows)
         row->slider.setEnabled (! active);
     primary.setEnabled (active || hasInput);
@@ -270,13 +303,13 @@ void VoxSplitEditor::sync (bool initial)
         case Phase::finished:  status = "Saved to Music / VoxSplit / " + s.input.getFileNameWithoutExtension(); break;
         case Phase::idle:
         {
-            const bool best = processor.getQuality() == SeparationJob::Quality::best;
-            const auto& estimate = *processor.getEstimate();
-            const double seconds = best ? estimate.bestSec.load() : estimate.fastSec.load();
-            status = ! hasInput   ? juce::String()
-                   : seconds > 0.0 ? juce::String (best ? "Best" : "Fast") + " takes " + about (seconds)
-                                           + (best ? " (cleanest split)" : "")
-                                   : juce::String::fromUTF8 ("Estimating time\xe2\x80\xa6");
+            const auto settings = processor.currentSettings();
+            const double seconds = processor.getEstimate()->total (settings);
+            status = ! hasInput    ? juce::String()
+                   : seconds <= 0.0 ? juce::String::fromUTF8 ("Estimating time\xe2\x80\xa6")
+                   : settings.tool == SeparationJob::Tool::leadBacking && settings.vocalPasses == 0
+                       ? "Takes " + about (seconds) + ". Vocal passes is 0: the file must be vocals only."
+                       : "Takes " + about (seconds) + " with these settings";
             break;
         }
         case Phase::preparing: case Phase::running: status = ""; break;
@@ -303,14 +336,19 @@ void VoxSplitEditor::sync (bool initial)
 
 void VoxSplitEditor::showStems (const juce::Array<SeparationJob::Output>& outputs, bool animate)
 {
+    struct Kind { const char* stem; const char* title; juce::Colour colour; };
+    const Kind kinds[] = { { "lead", "Lead vocals", colours::lead },
+                           { "backing", "Backing vocals", colours::backing },
+                           { "vocals", "Vocals", colours::lead },
+                           { "instrumental", "Instrumental", colours::instrumental } };
+    // Lead/backing runs only show the instrumental if the engine was asked for it.
+    const bool remover = vocalRemover();
     int index = 0;
-    for (const auto* stem : { "lead", "backing" })
+    for (const auto& kind : kinds)
         for (const auto& out : outputs)
-            if (out.stem == stem)
+            if (out.stem == kind.stem && (remover || out.stem != "instrumental"))
             {
-                const bool lead = out.stem == "lead";
-                auto* row = rows.add (new StemRow (lead ? "Lead vocals" : "Backing vocals",
-                                                   lead ? colours::lead : colours::backing, out.file));
+                auto* row = rows.add (new StemRow (kind.title, kind.colour, out.file));
                 row->onTogglePreview = [this, file = out.file] { togglePreview (file); };
                 addAndMakeVisible (row);
                 if (animate)
@@ -331,13 +369,22 @@ void VoxSplitEditor::resized()
     dropZone.setBounds (area.removeFromTop (128));
     area.removeFromTop (14);
 
-    // Settings: the quality toggle, then one row per model.
+    // Settings: tool, quality (lead/backing only), then the pass sliders.
     constexpr int labelWidth = 150;
-    auto qualityRow = area.removeFromTop (32);
-    qualityLabelArea = qualityRow.removeFromLeft (labelWidth);
-    quality.setBounds (qualityRow.removeFromLeft (124));
+    auto toolRow = area.removeFromTop (32);
+    toolLabelArea = toolRow.removeFromLeft (labelWidth);
+    tool.setBounds (toolRow.removeFromLeft (248));
+    if (! vocalRemover())
+    {
+        area.removeFromTop (6);
+        auto qualityRow = area.removeFromTop (32);
+        qualityLabelArea = qualityRow.removeFromLeft (labelWidth);
+        quality.setBounds (qualityRow.removeFromLeft (124));
+    }
     for (auto* row : passRows)
     {
+        if (! row->slider.isVisible())
+            continue;
         area.removeFromTop (6);
         auto r = area.removeFromTop (34);
         row->label = r.removeFromLeft (labelWidth);
@@ -400,9 +447,13 @@ void VoxSplitEditor::paint (juce::Graphics& g)
     // Settings labels: "Quality", then each slider's name, caption and value.
     g.setFont (font (12.5f));
     g.setColour (colours::textDim);
-    g.drawText ("Quality", qualityLabelArea, juce::Justification::centredLeft);
+    g.drawText ("Tool", toolLabelArea, juce::Justification::centredLeft);
+    if (! vocalRemover())
+        g.drawText ("Quality", qualityLabelArea, juce::Justification::centredLeft);
     for (auto* row : passRows)
     {
+        if (! row->slider.isVisible())
+            continue;
         const float alpha = row->slider.isEnabled() ? 1.0f : 0.45f;
         auto label = row->label;
         g.setColour (colours::text.withAlpha (alpha));
