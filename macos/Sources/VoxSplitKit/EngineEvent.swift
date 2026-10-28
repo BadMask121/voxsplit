@@ -5,6 +5,8 @@ public enum EngineEvent: Sendable, Equatable {
     public enum Stage: String, Sendable {
         /// mix → vocals
         case vocals
+        /// a further vocal pass over the previous pass's vocals
+        case vocalsRefine = "vocals_refine"
         /// vocals → lead + backing
         case karaoke
         /// a further karaoke pass that pulls leftover backing out of the lead
@@ -19,8 +21,26 @@ public enum EngineEvent: Sendable, Equatable {
     case stage(Stage, index: Int, stages: Int, model: String, device: String)
     case progress(Stage, fraction: Double, overall: Double, etaSec: Double?)
     /// From `voxsplit-engine estimate`: expected seconds at each quality with one
-    /// karaoke pass, and per extra pass.
-    case estimate(durationSec: Double, bestSec: Double, bestPassSec: Double, fastSec: Double, fastPassSec: Double)
+    /// vocal and one karaoke pass, and per extra pass of each model.
+    case estimate(Estimate)
+
+    public struct Estimate: Sendable, Equatable {
+        public var durationSec, vocalSec, vocalPassSec, bestSec, bestPassSec, fastSec, fastPassSec: Double
+
+        public init(durationSec: Double, vocalSec: Double, vocalPassSec: Double,
+                    bestSec: Double, bestPassSec: Double, fastSec: Double, fastPassSec: Double) {
+            (self.durationSec, self.vocalSec, self.vocalPassSec) = (durationSec, vocalSec, vocalPassSec)
+            (self.bestSec, self.bestPassSec, self.fastSec, self.fastPassSec) = (bestSec, bestPassSec, fastSec, fastPassSec)
+        }
+
+        /// Expected seconds for a quality with `passes` karaoke and `vocalPasses` vocal passes.
+        public func total(_ quality: Quality, passes: Int, vocalPasses: Int) -> Double {
+            let base = quality == .best ? bestSec : fastSec
+            let extra = quality == .best ? bestPassSec : fastPassSec
+            let vocals = vocalPasses == 0 ? -vocalSec : Double(vocalPasses - 1) * vocalPassSec
+            return base + Double(max(0, passes - 1)) * extra + vocals
+        }
+    }
     case log(level: String, message: String)
     case output(Stem, url: URL)
     case done(elapsedSec: Double)
@@ -49,8 +69,9 @@ public enum EngineEvent: Sendable, Equatable {
             self = .progress(stage, fraction: raw.fraction ?? 0, overall: raw.overall ?? 0, etaSec: raw.etaSec)
         case "estimate":
             guard let best = raw.bestSec, let fast = raw.fastSec else { self = .other(name: raw.event); return }
-            self = .estimate(durationSec: raw.durationSec ?? 0, bestSec: best, bestPassSec: raw.bestPassSec ?? 0,
-                             fastSec: fast, fastPassSec: raw.fastPassSec ?? 0)
+            self = .estimate(Estimate(
+                durationSec: raw.durationSec ?? 0, vocalSec: raw.vocalSec ?? 0, vocalPassSec: raw.vocalPassSec ?? 0,
+                bestSec: best, bestPassSec: raw.bestPassSec ?? 0, fastSec: fast, fastPassSec: raw.fastPassSec ?? 0))
         case "log":
             self = .log(level: raw.level ?? "info", message: raw.message ?? "")
         case "output":
@@ -92,5 +113,7 @@ public enum EngineEvent: Sendable, Equatable {
         var fastSec: Double?
         var bestPassSec: Double?
         var fastPassSec: Double?
+        var vocalSec: Double?
+        var vocalPassSec: Double?
     }
 }

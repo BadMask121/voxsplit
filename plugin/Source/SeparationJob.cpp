@@ -56,6 +56,8 @@ void SeparationJob::requestEstimate (const juce::File& input, std::shared_ptr<Es
             const auto json = juce::JSON::parse (line);
             if (json.getProperty ("event", {}).toString() == "estimate" && into->version == ticket)
             {
+                into->vocalSec = (double) json.getProperty ("vocal_sec", 0.0);
+                into->vocalPassSec = (double) json.getProperty ("vocal_pass_sec", 0.0);
                 into->bestPassSec = (double) json.getProperty ("best_pass_sec", 0.0);
                 into->fastPassSec = (double) json.getProperty ("fast_pass_sec", 0.0);
                 into->bestSec = (double) json.getProperty ("best_sec", -1.0);
@@ -72,7 +74,7 @@ bool SeparationJob::isActive() const
 }
 
 bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, Quality quality,
-                           int passes, const EngineLocation& loc)
+                           int passes, int vocalPasses, const EngineLocation& loc)
 {
     if (isThreadRunning())
         return false;
@@ -104,6 +106,7 @@ bool SeparationJob::start (const juce::File& input, const juce::File& outputFold
     args.add ("--models-dir=" + loc.modelsDir.getFullPathName());
     args.add (quality == Quality::best ? "--quality=best" : "--quality=fast");
     args.add ("--passes=" + juce::String (juce::jlimit (1, 5, passes)));
+    args.add ("--vocal-passes=" + juce::String (juce::jlimit (0, 5, vocalPasses)));
 
     cancelRequested = false;
     sawDone = sawCancelled = false;
@@ -280,7 +283,7 @@ void SeparationJob::handleLine (const juce::String& line)
         appendLog ("Stage " + json.getProperty ("index", 0).toString() + ": " + model + " on " + device);
         update ([&] (Snapshot& s) {
             s.phase = Phase::running;
-            s.stage = json.getProperty ("stage", {}).toString();
+            s.stage = json.getProperty ("stage", {}).toString(); // vocals | vocals_refine | karaoke | refine
             s.stageIndex = (int) json.getProperty ("index", 0);
             s.stages = (int) json.getProperty ("stages", s.stages);
             s.device = device;

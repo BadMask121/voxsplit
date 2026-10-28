@@ -6,7 +6,7 @@ using Phase = SeparationJob::Phase;
 namespace
 {
     constexpr int width = 540;
-    constexpr int baseHeight = 558;
+    constexpr int baseHeight = 650;
     constexpr int logHeight = 150;
 
     juce::String percent (float f) { return juce::String (juce::roundToInt (f * 100.0f)) + "%"; }
@@ -60,17 +60,25 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     quality.setSelected (processor.getQuality() == SeparationJob::Quality::fast ? 1 : 0, false);
     quality.onChange = [this] (int index) {
         processor.setQuality (index == 1 ? SeparationJob::Quality::fast : SeparationJob::Quality::best);
-        // Each quality remembers its own pass count.
-        passes.setValue (processor.getPasses (processor.getQuality()), true);
+        updateActiveRows (true);
         sync (false);
     };
 
-    addAndMakeVisible (passes);
-    passes.setValue (processor.getPasses (processor.getQuality()), false);
-    passes.onChange = [this] (int n) {
-        processor.setPasses (processor.getQuality(), n);
-        sync (false);
-    };
+    // One slider per model. The karaoke model that the current quality doesn't
+    // use stays adjustable but fades back.
+    using Q = SeparationJob::Quality;
+    kimRow.slider.setValue (processor.getVocalPasses(), false);
+    kimRow.slider.onChange = [this] (int n) { processor.setVocalPasses (n); sync (false); };
+    roformerRow.slider.setValue (processor.getPasses (Q::best), false);
+    roformerRow.slider.onChange = [this] (int n) { processor.setPasses (Q::best, n); sync (false); };
+    mdxRow.slider.setValue (processor.getPasses (Q::fast), false);
+    mdxRow.slider.onChange = [this] (int n) { processor.setPasses (Q::fast, n); sync (false); };
+    for (auto* row : modelRows)
+    {
+        row->slider.setTitle (row->name + " passes");
+        addAndMakeVisible (row->slider);
+    }
+    updateActiveRows (false);
 
     addAndMakeVisible (progress);
     progress.setAlpha (0.0f);
@@ -97,6 +105,23 @@ VoxSplitEditor::~VoxSplitEditor()
 {
     // With the window gone there'd be no way to stop it.
     preview.stop();
+}
+
+void VoxSplitEditor::updateActiveRows (bool animate)
+{
+    const bool best = processor.getQuality() == SeparationJob::Quality::best;
+    const std::array<bool, 3> active { true, best, ! best };
+    for (size_t i = 0; i < modelRows.size(); ++i)
+    {
+        auto& row = *modelRows[i];
+        const float target = active[i] ? 1.0f : 0.0f;
+        if (animate)
+            row.active.animateTo (target, active[i] ? motion::fade : motion::hoverOut);
+        else
+            row.active.snap (target);
+        row.slider.setAlpha (0.45f + 0.55f * row.active.value);
+    }
+    repaint();
 }
 
 void VoxSplitEditor::togglePreview (const juce::File& f)
@@ -136,7 +161,7 @@ void VoxSplitEditor::primaryClicked()
     preview.stop(); // the stems being previewed are about to be replaced
     rows.clear();
     job.start (input, SeparationJob::defaultOutputFolder (input), processor.getQuality(),
-               processor.getPasses (processor.getQuality()));
+               processor.getPasses (processor.getQuality()), processor.getVocalPasses());
 }
 
 void VoxSplitEditor::toggleLog()
@@ -183,8 +208,19 @@ void VoxSplitEditor::tick()
     if (job.version() != seenVersion || processor.getEstimate()->version != seenEstimate)
         sync (false);
 
-    if (progressAlpha.tick (nowMs()))
+    const auto now = nowMs();
+    if (progressAlpha.tick (now))
         progress.setAlpha (progressAlpha.value);
+
+    bool rowsMoved = false;
+    for (auto* row : modelRows)
+        if (row->active.tick (now))
+        {
+            row->slider.setAlpha (0.45f + 0.55f * row->active.value);
+            rowsMoved = true;
+        }
+    if (rowsMoved)
+        repaint();
 
     const bool playing = preview.isPlaying();
     const auto playingFile = preview.getFile();
@@ -203,7 +239,8 @@ void VoxSplitEditor::sync (bool initial)
 
     dropZone.setEnabled (! active);
     quality.setEnabled (! active);
-    passes.setEnabled (! active);
+    for (auto* row : modelRows)
+        row->slider.setEnabled (! active);
     primary.setEnabled (active || hasInput);
     primary.setLabel (active ? "Cancel" : (s.phase == Phase::failed ? "Try again" : "Separate"));
     primary.setStyle (active ? PressableButton::Style::ghost : PressableButton::Style::primary);
@@ -212,9 +249,10 @@ void VoxSplitEditor::sync (bool initial)
         device = s.device;
 
     // Progress strip.
-    const auto stageText = s.stage == "vocals"  ? juce::String ("Isolating vocals")
-                         : s.stage == "refine"  ? juce::String ("Cleaning up the lead")
-                                                : juce::String ("Splitting lead from backing");
+    const auto stageText = s.stage == "vocals"        ? juce::String ("Isolating vocals")
+                         : s.stage == "vocals_refine" ? juce::String ("Cleaning up the vocals")
+                         : s.stage == "refine"        ? juce::String ("Cleaning up the lead")
+                                                      : juce::String ("Splitting lead from backing");
     const auto stageCount = "Stage " + juce::String (s.stageIndex) + " of " + juce::String (s.stages);
     switch (s.phase)
     {
@@ -316,17 +354,22 @@ void VoxSplitEditor::resized()
     headerArea = area.removeFromTop (40);
     area.removeFromTop (16);
 
-    dropZone.setBounds (area.removeFromTop (150));
+    dropZone.setBounds (area.removeFromTop (128));
     area.removeFromTop (14);
 
-    // Settings: Quality [Best|Fast]   Refinement passes [——●——] 3
-    auto settings = area.removeFromTop (32);
-    qualityLabelArea = settings.removeFromLeft (54);
-    quality.setBounds (settings.removeFromLeft (124));
-    settings.removeFromLeft (28);
-    passesLabelArea = settings.removeFromLeft (118);
-    passesValueArea = settings.removeFromRight (18);
-    passes.setBounds (settings.reduced (6, 0));
+    // Settings: the quality toggle, then one row per model.
+    constexpr int labelWidth = 150;
+    auto qualityRow = area.removeFromTop (32);
+    qualityLabelArea = qualityRow.removeFromLeft (labelWidth);
+    quality.setBounds (qualityRow.removeFromLeft (124));
+    for (auto* row : modelRows)
+    {
+        area.removeFromTop (6);
+        auto r = area.removeFromTop (34);
+        row->label = r.removeFromLeft (labelWidth);
+        row->value = r.removeFromRight (18);
+        row->slider.setBounds (r.reduced (6, 0));
+    }
     area.removeFromTop (14);
 
     auto actions = area.removeFromTop (36);
@@ -380,14 +423,24 @@ void VoxSplitEditor::paint (juce::Graphics& g)
     g.setFont (chipFont);
     g.drawText (chipText, chip.withTrimmedLeft (22.0f).withTrimmedRight (8.0f), juce::Justification::centredLeft);
 
-    // Settings labels.
+    // Settings labels: "Quality", then each model's name, role and pass count.
     g.setFont (font (12.5f));
     g.setColour (colours::textDim);
     g.drawText ("Quality", qualityLabelArea, juce::Justification::centredLeft);
-    g.drawText ("Refinement passes", passesLabelArea, juce::Justification::centredLeft);
-    g.setColour (colours::text.withAlpha (passes.isEnabled() ? 1.0f : 0.45f));
-    g.setFont (font (13.0f, true));
-    g.drawText (juce::String (passes.getValue()), passesValueArea, juce::Justification::centredRight);
+    for (auto* row : modelRows)
+    {
+        const float alpha = (row->slider.isEnabled() ? 1.0f : 0.45f) * (0.45f + 0.55f * row->active.value);
+        auto label = row->label;
+        g.setColour (colours::text.withAlpha (alpha));
+        g.setFont (font (12.5f, true));
+        g.drawText (row->name, label.removeFromTop (label.getHeight() / 2 + 1), juce::Justification::bottomLeft);
+        g.setColour (colours::textDim.withAlpha (alpha));
+        g.setFont (font (10.5f));
+        g.drawText (juce::String::fromUTF8 (row->role), label, juce::Justification::topLeft);
+        g.setColour (colours::text.withAlpha (alpha));
+        g.setFont (font (13.0f, true));
+        g.drawText (juce::String (row->slider.getValue()), row->value, juce::Justification::centredRight);
+    }
 
     // Status next to the primary button.
     const auto statusFont = font (12.5f);

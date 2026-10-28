@@ -40,7 +40,21 @@ private:
     vox::PressableButton primary { "Separate", vox::PressableButton::Style::primary };
     vox::PressableButton logToggle { "Show log", vox::PressableButton::Style::link };
     vox::SegmentedToggle quality { { "Best", "Fast" } };
-    vox::PassSlider passes { 1, 5 };
+
+    /** One slider per model: name, role, slider, and where its label/value draw. */
+    struct ModelRow
+    {
+        juce::String name;
+        const char* role; // UTF-8
+        vox::PassSlider slider;
+        juce::Rectangle<int> label, value;
+        vox::Tween active;
+    };
+    ModelRow kimRow { "Kim Vocal 2", "vocals \xc2\xb7 0 = file is vocals", { 0, 5 }, {}, {}, {} };
+    ModelRow roformerRow { "BS-RoFormer", "lead/backing \xc2\xb7 Best", { 1, 5 }, {}, {}, {} };
+    ModelRow mdxRow { "MDX Karaoke 2", "lead/backing \xc2\xb7 Fast", { 1, 5 }, {}, {}, {} };
+    std::array<ModelRow*, 3> modelRows { &kimRow, &roformerRow, &mdxRow };
+    void updateActiveRows (bool animate);
     vox::ProgressStrip progress;
     juce::OwnedArray<vox::StemRow> rows;
     juce::TextEditor console;
@@ -50,7 +64,7 @@ private:
     int shownLogSize = -1;
     juce::String status, device;
     juce::Colour statusColour;
-    juce::Rectangle<int> headerArea, statusArea, rowsArea, qualityLabelArea, passesLabelArea, passesValueArea;
+    juce::Rectangle<int> headerArea, statusArea, rowsArea, qualityLabelArea;
     bool logOpen = false;
     vox::Tween progressAlpha;
 

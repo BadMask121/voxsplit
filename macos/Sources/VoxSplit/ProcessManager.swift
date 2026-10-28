@@ -44,18 +44,8 @@ final class ProcessManager {
     private(set) var stems: [Stem] = []
     private(set) var elapsed: Double?
     private(set) var log: [LogLine] = []
-    /// Expected seconds for the chosen file: per quality, with one pass and per
-    /// extra pass (`nil` while estimating).
-    private(set) var estimates: Estimates?
-
-    nonisolated struct Estimates: Sendable {
-        var best, bestPass, fast, fastPass: Double
-
-        func total(_ quality: Quality, passes: Int) -> Double {
-            let extra = Double(max(0, passes - 1))
-            return quality == .best ? best + extra * bestPass : fast + extra * fastPass
-        }
-    }
+    /// Expected seconds for the chosen file (`nil` while estimating).
+    private(set) var estimates: EngineEvent.Estimate?
     /// Seconds left in the current run, as the engine last reported.
     private(set) var eta: Double?
 
@@ -70,19 +60,37 @@ final class ProcessManager {
         return (q, stored > 0 ? stored : (q == .best ? 1 : 3))
     })
 
-    /// Refinement passes for the current quality.
+    /// Passes of the karaoke model a quality uses (BS-RoFormer for Best, MDX for Fast).
+    func passes(for q: Quality) -> Int { passesByQuality[q] ?? 1 }
+
+    func setPasses(_ n: Int, for q: Quality) {
+        let clamped = min(max(n, 1), 5)
+        passesByQuality[q] = clamped
+        UserDefaults.standard.set(clamped, forKey: "passes.\(q.rawValue)")
+    }
+
+    /// Passes of the current quality's karaoke model.
     var passes: Int {
-        get { passesByQuality[quality] ?? 1 }
+        get { passes(for: quality) }
+        set { setPasses(newValue, for: quality) }
+    }
+
+    /// Kim Vocal 2 passes, shared by both qualities; 0 = the file is already vocals.
+    var vocalPasses: Int {
+        get { storedVocalPasses }
         set {
-            let clamped = min(max(newValue, 1), 5)
-            passesByQuality[quality] = clamped
-            UserDefaults.standard.set(clamped, forKey: "passes.\(quality.rawValue)")
+            // Clamp here, not in didSet: @Observable makes the property computed, so
+            // assigning it from its own didSet would recurse.
+            storedVocalPasses = min(max(newValue, 0), 5)
+            UserDefaults.standard.set(storedVocalPasses, forKey: "passes.vocals")
         }
     }
 
-    /// Expected seconds for the current quality and passes, if known.
+    private var storedVocalPasses: Int = (UserDefaults.standard.object(forKey: "passes.vocals") as? Int) ?? 1
+
+    /// Expected seconds for the current settings, if known.
     var estimatedSeconds: Double? {
-        estimates?.total(quality, passes: passes)
+        estimates?.total(quality, passes: passes, vocalPasses: vocalPasses)
     }
 
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -119,10 +127,10 @@ final class ProcessManager {
         let runner = EngineRunner(executable: location.engine)
         let arguments = location.estimateArguments(input: url)
         estimateTask = Task {
-            let result = OSAllocatedUnfairLock<Estimates?>(initialState: nil)
+            let result = OSAllocatedUnfairLock<EngineEvent.Estimate?>(initialState: nil)
             _ = try? await runner.run(arguments: arguments) { output in
-                if case .event(.estimate(_, let best, let bestPass, let fast, let fastPass)) = output {
-                    result.withLock { $0 = Estimates(best: best, bestPass: bestPass, fast: fast, fastPass: fastPass) }
+                if case .event(.estimate(let estimate)) = output {
+                    result.withLock { $0 = estimate }
                 }
             }
             guard !Task.isCancelled, input == url, let found = result.withLock({ $0 }) else { return }
@@ -153,7 +161,8 @@ final class ProcessManager {
             input: input,
             outputFolder: EngineLocator.defaultOutputFolder(for: input),
             quality: quality,
-            passes: passes
+            passes: passes,
+            vocalPasses: vocalPasses
         )
         eta = nil
 

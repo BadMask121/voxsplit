@@ -1,6 +1,9 @@
 //! The lead/backing pipeline:
 //!
-//! 1. `mix → vocal model → vocals` (and optionally `instrumental = mix − vocals`)
+//! 1. `mix → vocal model → vocals` (and optionally `instrumental = mix − vocals`).
+//!    Further vocal passes re-run the vocal model on its own output; whatever it
+//!    removes is instrument bleed, which ends up in the instrumental. Zero vocal
+//!    passes means the input is already vocals.
 //! 2. `vocals → karaoke model → backing`, `lead = vocals − backing`
 //! 3. Refinement passes: the karaoke model runs again on the current lead, and
 //!    whatever backing it still finds moves from the lead into the backing stem.
@@ -32,7 +35,9 @@ pub struct Job {
     pub out_dir: PathBuf,
     pub vocal_model: PathBuf,
     pub karaoke_model: PathBuf,
-    pub input_is_vocals: bool,
+    /// Vocal-extraction passes: 0 = the input is already vocals, 1 = one pass
+    /// (the usual), more = re-run on its own output to strip instrument bleed.
+    pub vocal_passes: u8,
     pub keep_instrumental: bool,
     /// Karaoke passes (1 = a single split, more = refine the lead further).
     pub passes: u8,
@@ -59,13 +64,14 @@ pub fn overlap_for(requested: Option<f32>, cfg: &ModelConfig) -> f32 {
     requested.or(cfg.default_overlap).unwrap_or(0.5)
 }
 
-/// Expected seconds per stage: the vocal stage (if any), then one entry per
-/// karaoke pass. A model's load time is counted on its first stage only.
+/// Expected seconds per stage: one entry per vocal pass, then one per karaoke
+/// pass. A model's load time is counted on its first stage only.
 #[allow(clippy::too_many_arguments)]
 pub fn stage_estimates(
     timings: &TimingStore,
     device: &str,
     vocal: Option<&ModelConfig>,
+    vocal_passes: u8,
     karaoke: &ModelConfig,
     passes: u8,
     overlap: Option<f32>,
@@ -75,13 +81,15 @@ pub fn stage_estimates(
     let mut estimates = Vec::new();
     if let Some(cfg) = vocal {
         let t = timings.get(cfg, device);
-        estimates.push(t.stage_sec(
-            cfg,
-            samples,
-            overlap_for(overlap, cfg),
-            opts.runs_per_chunk(cfg),
-            true,
-        ));
+        for pass in 0..vocal_passes {
+            estimates.push(t.stage_sec(
+                cfg,
+                samples,
+                overlap_for(overlap, cfg),
+                opts.runs_per_chunk(cfg),
+                pass == 0,
+            ));
+        }
     }
     let t = timings.get(karaoke, device);
     let runs = opts.runs_per_chunk(karaoke);
@@ -106,7 +114,8 @@ pub fn run(
 
     // Validate everything cheap before spending minutes on inference.
     let karaoke_cfg = ModelConfig::for_model(&job.karaoke_model).map_err(EngineError::ModelLoad)?;
-    let vocal_cfg = (!job.input_is_vocals)
+    let vocal_passes = job.vocal_passes.min(5);
+    let vocal_cfg = (vocal_passes > 0)
         .then(|| ModelConfig::for_model(&job.vocal_model))
         .transpose()
         .map_err(EngineError::ModelLoad)?;
@@ -123,8 +132,8 @@ pub fn run(
 
     let decoded = audio::decode(&job.input).map_err(EngineError::Decode)?;
     let passes = job.passes.max(1);
-    let karaoke_stage = if vocal_cfg.is_some() { 2 } else { 1 };
-    let stages = karaoke_stage - 1 + passes;
+    let karaoke_stage = vocal_passes + 1;
+    let stages = vocal_passes + passes;
     let source_rate = decoded.sample_rate;
     let work_rate = karaoke_cfg.sample_rate;
     let work_len = (decoded.audio.len() as f64 * work_rate as f64 / source_rate as f64) as usize;
@@ -134,6 +143,7 @@ pub fn run(
         &timings,
         device::expected_name(job.device),
         vocal_cfg.as_ref(),
+        vocal_passes,
         &karaoke_cfg,
         passes,
         job.overlap,
@@ -169,63 +179,78 @@ pub fn run(
         .then(|| sink(Stem::Instrumental))
         .transpose()?;
 
-    // Stage 1: mix → vocals (kept in memory; stage 2 needs all of it).
+    // Vocal passes: mix → vocals, then vocals → cleaner vocals. Kept in memory;
+    // the karaoke stage needs all of it.
     let vocals = match &vocal_cfg {
         Some(cfg) => {
             let loading = Instant::now();
             let mut model = load(env, job, &job.vocal_model, cfg)?;
             let load_sec = loading.elapsed().as_secs_f64();
-            events::emit(&Event::Stage {
-                stage: StageName::Vocals,
-                index: 1,
-                stages,
-                model: &cfg.name,
-                device: model.1,
-            });
             let opts = job.options_for(cfg);
             let chunks = chunk_count(cfg, mix.len(), opts.overlap);
             let runs = opts.runs_per_chunk(cfg);
-            let mut progress = Progress::new(
-                StageName::Vocals,
-                0,
-                stages,
-                chunks as f64 * runs * timings.get(cfg, model.1).chunk_sec,
-                estimates[1..].iter().sum(),
-            );
-            let mut vocals = Stereo::with_capacity(mix.len());
+            let chunk_sec = timings.get(cfg, model.1).chunk_sec;
             let comp = cfg.compensate;
-            separator::separate(
-                &mut model.0,
-                cfg,
-                &mix,
-                opts,
-                |done, total| {
-                    cancel.check()?;
-                    progress.update(done, total);
-                    Ok(())
-                },
-                |start, l, r| {
-                    let vl: Vec<f32> = l.iter().map(|v| v * comp).collect();
-                    let vr: Vec<f32> = r.iter().map(|v| v * comp).collect();
-                    if let Some(inst) = instrumental.as_mut() {
-                        let il: Vec<f32> =
-                            vl.iter().zip(&mix.l[start..]).map(|(v, m)| m - v).collect();
-                        let ir: Vec<f32> =
-                            vr.iter().zip(&mix.r[start..]).map(|(v, m)| m - v).collect();
-                        inst.write(&il, &ir).map_err(EngineError::Write)?;
-                    }
-                    vocals.extend(&vl, &vr);
-                    Ok(())
-                },
-            )?;
+            let mut current: Option<Stereo> = None;
+            let mut inference_sec = 0.0;
+            for pass in 0..vocal_passes {
+                let stage = if pass == 0 {
+                    StageName::Vocals
+                } else {
+                    StageName::VocalsRefine
+                };
+                events::emit(&Event::Stage {
+                    stage,
+                    index: pass + 1,
+                    stages,
+                    model: &cfg.name,
+                    device: model.1,
+                });
+                let mut progress = Progress::new(
+                    stage,
+                    pass,
+                    stages,
+                    chunks as f64 * runs * chunk_sec,
+                    estimates[pass as usize + 1..].iter().sum(),
+                );
+                let source = current.as_ref().unwrap_or(&mix);
+                let mut next = Stereo::with_capacity(mix.len());
+                separator::separate(
+                    &mut model.0,
+                    cfg,
+                    source,
+                    opts,
+                    |done, total| {
+                        cancel.check()?;
+                        progress.update(done, total);
+                        Ok(())
+                    },
+                    |_, l, r| {
+                        let vl: Vec<f32> = l.iter().map(|v| v * comp).collect();
+                        let vr: Vec<f32> = r.iter().map(|v| v * comp).collect();
+                        next.extend(&vl, &vr);
+                        Ok(())
+                    },
+                )?;
+                inference_sec += progress.elapsed();
+                current = Some(next);
+                cancel.check()?;
+            }
             timings.record(
                 cfg,
                 model.1,
                 Timing {
                     load_sec,
-                    chunk_sec: progress.elapsed() / (chunks.max(1) as f64 * runs),
+                    chunk_sec: inference_sec / (chunks.max(1) as f64 * runs * vocal_passes as f64),
                 },
             );
+            let vocals = current.expect("at least one vocal pass");
+            // Whatever any pass removed is in here: vocals + instrumental == mix.
+            if let Some(inst) = instrumental.as_mut() {
+                let il: Vec<f32> = mix.l.iter().zip(&vocals.l).map(|(m, v)| m - v).collect();
+                let ir: Vec<f32> = mix.r.iter().zip(&vocals.r).map(|(m, v)| m - v).collect();
+                inst.write(&il, &ir).map_err(EngineError::Write)?;
+            }
             vocals
         }
         None => mix,

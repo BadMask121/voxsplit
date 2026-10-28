@@ -23,12 +23,11 @@ struct ContentView: View {
                 onChoose: { showingImporter = true },
                 onDrop: choose
             )
-            .frame(height: 150)
+            .frame(height: 128)
             .disabled(manager.phase.isActive)
             .padding(.bottom, 14)
 
-            settingsRow
-                .frame(height: 32)
+            settingsBlock
                 .padding(.bottom, 14)
 
             actionRow
@@ -125,27 +124,26 @@ struct ContentView: View {
         }
     }
 
-    /// Quality [Best|Fast]   Refinement passes [——●——] 3
-    private var settingsRow: some View {
-        HStack(spacing: 0) {
-            Text("Quality")
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textDim)
-                .frame(width: 54, alignment: .leading)
-            QualityToggle(quality: Bindable(manager).quality)
-                .frame(width: 124)
-            Spacer().frame(width: 28)
-            Text("Refinement passes")
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textDim)
-                .frame(width: 118, alignment: .leading)
-            PassesSlider(value: Bindable(manager).passes)
-                .padding(.horizontal, 6)
-            Text("\(manager.passes)")
-                .font(.system(size: 13, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(Theme.text)
-                .frame(width: 18, alignment: .trailing)
+    /// The quality toggle, then one slider per model. The karaoke model the
+    /// current quality doesn't use stays adjustable but fades back.
+    private var settingsBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 0) {
+                Text("Quality")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textDim)
+                    .frame(width: 150, alignment: .leading)
+                QualityToggle(quality: Bindable(manager).quality)
+                    .frame(width: 124, height: 32)
+            }
+            ModelPassesRow(name: "Kim Vocal 2", role: "vocals · 0 = file is vocals", range: 0...5, active: true,
+                           value: Binding(get: { manager.vocalPasses }, set: { manager.vocalPasses = $0 }))
+            ModelPassesRow(name: "BS-RoFormer", role: "lead/backing · Best", range: 1...5,
+                           active: manager.quality == .best,
+                           value: Binding(get: { manager.passes(for: .best) }, set: { manager.setPasses($0, for: .best) }))
+            ModelPassesRow(name: "MDX Karaoke 2", role: "lead/backing · Fast", range: 1...5,
+                           active: manager.quality == .fast,
+                           value: Binding(get: { manager.passes(for: .fast) }, set: { manager.setPasses($0, for: .fast) }))
         }
         .disabled(manager.phase.isActive)
     }
@@ -249,6 +247,7 @@ struct ContentView: View {
         case .running:
             switch manager.stage {
             case .vocals: "Isolating vocals"
+            case .vocalsRefine: "Cleaning up the vocals"
             case .refine: "Cleaning up the lead"
             default: "Splitting lead from backing"
             }
@@ -280,7 +279,9 @@ struct ContentView: View {
             if manager.input == nil {
                 ""
             } else if let seconds = manager.estimatedSeconds {
-                "\(manager.quality == .best ? "Best" : "Fast"), \(manager.passes) \(manager.passes == 1 ? "pass" : "passes"): \(aboutDuration(seconds))"
+                manager.vocalPasses == 0
+                    ? "Takes \(aboutDuration(seconds)). Kim Vocal 2 is off: the file must be vocals only."
+                    : "Takes \(aboutDuration(seconds)) with these settings"
             } else {
                 "Estimating time…"
             }

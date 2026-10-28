@@ -58,7 +58,11 @@ struct SeparateArgs {
     /// Lead/backing model [default: chosen by --quality].
     #[arg(long)]
     karaoke_model: Option<PathBuf>,
-    /// The input is already an a cappella: skip stage 1.
+    /// Vocal-extraction passes: 0 = the input is already vocals, 1 = usual,
+    /// more = re-run on its own output to strip instrument bleed.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(0..=5))]
+    vocal_passes: u8,
+    /// Same as --vocal-passes=0.
     #[arg(long)]
     input_is_vocals: bool,
     /// Also write instrumental.wav (mix − vocals).
@@ -204,7 +208,11 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
             .unwrap_or_else(|| model(karaoke_file)),
         input: args.input,
         out_dir,
-        input_is_vocals: args.input_is_vocals,
+        vocal_passes: if args.input_is_vocals {
+            0
+        } else {
+            args.vocal_passes
+        },
         keep_instrumental: args.keep_instrumental,
         passes: args.passes.unwrap_or(default_passes),
         device: args.device,
@@ -236,28 +244,31 @@ fn estimate(args: EstimateArgs) -> Result<(), EngineError> {
     let samples = (duration * vocal.sample_rate as f64) as usize;
     let timings = TimingStore::open(timings_path());
     let device = device::expected_name(args.device);
-    // Two passes: [vocals, first karaoke pass (incl. load), one extra pass].
-    let split = |karaoke: &ModelConfig| -> (f64, f64) {
-        let stages = pipeline::stage_estimates(
+    // Two vocal + two karaoke passes: [vocal first, vocal extra, karaoke first, karaoke extra].
+    let split = |karaoke: &ModelConfig| -> [f64; 4] {
+        let s = pipeline::stage_estimates(
             &timings,
             device,
             Some(&vocal),
+            2,
             karaoke,
             2,
             None,
             SeparateOptions::default(),
             samples,
         );
-        (stages[0] + stages[1], stages[2])
+        [s[0], s[1], s[2], s[3]]
     };
-    let (best_sec, best_pass_sec) = split(&config(KARAOKE_BEST)?);
-    let (fast_sec, fast_pass_sec) = split(&config(KARAOKE_FAST)?);
+    let best = split(&config(KARAOKE_BEST)?);
+    let fast = split(&config(KARAOKE_FAST)?);
     events::emit(&Event::Estimate {
         duration_sec: duration,
-        best_sec,
-        best_pass_sec,
-        fast_sec,
-        fast_pass_sec,
+        vocal_sec: best[0],
+        vocal_pass_sec: best[1],
+        best_sec: best[0] + best[2],
+        best_pass_sec: best[3],
+        fast_sec: fast[0] + fast[2],
+        fast_pass_sec: fast[3],
     });
     Ok(())
 }

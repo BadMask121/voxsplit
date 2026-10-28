@@ -98,7 +98,7 @@ struct EngineRunnerTests {
             .run(arguments: repoEngine.estimateArguments(input: input)) { recorder.record($0) }
         #expect(status == 0)
         let estimate = recorder.events.compactMap {
-            if case .estimate(let duration, let best, _, let fast, _) = $0 { (duration, best, fast) } else { nil }
+            if case .estimate(let e) = $0 { (e.durationSec, e.bestSec, e.fastSec) } else { nil }
         }.first
         let (duration, best, fast) = try #require(estimate)
         #expect(abs(duration - 20) < 0.1)

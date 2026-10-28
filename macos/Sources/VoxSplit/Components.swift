@@ -233,6 +233,41 @@ struct PassesSlider: View {
     }
 }
 
+/// One model's pass count: name and role on the left, slider, value on the right.
+struct ModelPassesRow: View {
+    let name: String
+    let role: String
+    let range: ClosedRange<Int>
+    let active: Bool
+    @Binding var value: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Text(role)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.textDim)
+            }
+            .frame(width: 150, alignment: .leading)
+            PassesSlider(value: $value, range: range)
+                .padding(.horizontal, 6)
+            Text("\(value)")
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.text)
+                .frame(width: 18, alignment: .trailing)
+        }
+        .frame(height: 34)
+        .opacity(active ? 1 : 0.45)
+        .animation(.easeOut(duration: active ? Theme.fade : Theme.hoverOut), value: active)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(name), \(role)")
+    }
+}
+
 /// "about 25 s", "about 2 min 10 s": rounded so the number doesn't flicker.
 func aboutDuration(_ seconds: Double) -> String {
     if seconds < 60 { return "about \(max(5, Int((seconds / 5).rounded(.up)) * 5)) s" }

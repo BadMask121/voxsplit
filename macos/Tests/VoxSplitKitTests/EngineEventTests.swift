@@ -8,8 +8,11 @@ struct EngineEventTests {
          EngineEvent.start(stages: 2, durationSec: 213.4, sampleRate: 48000, estimateSec: nil)),
         (#"{"event":"start","stages":2,"duration_sec":10,"sample_rate":44100,"channels":2,"estimate_sec":42.5}"#,
          .start(stages: 2, durationSec: 10, sampleRate: 44100, estimateSec: 42.5)),
-        (#"{"event":"estimate","duration_sec":190.0,"best_sec":127.4,"best_pass_sec":91.0,"fast_sec":22.6,"fast_pass_sec":3.6}"#,
-         .estimate(durationSec: 190, bestSec: 127.4, bestPassSec: 91, fastSec: 22.6, fastPassSec: 3.6)),
+        (#"{"event":"estimate","duration_sec":190.0,"vocal_sec":12.0,"vocal_pass_sec":11.5,"best_sec":127.4,"best_pass_sec":91.0,"fast_sec":22.6,"fast_pass_sec":3.6}"#,
+         .estimate(.init(durationSec: 190, vocalSec: 12, vocalPassSec: 11.5, bestSec: 127.4, bestPassSec: 91,
+                         fastSec: 22.6, fastPassSec: 3.6))),
+        (#"{"event":"stage","stage":"vocals_refine","index":2,"stages":3,"model":"Kim Vocal 2","device":"coreml"}"#,
+         .stage(.vocalsRefine, index: 2, stages: 3, model: "Kim Vocal 2", device: "coreml")),
         (#"{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2","device":"coreml"}"#,
          .stage(.vocals, index: 1, stages: 2, model: "Kim Vocal 2", device: "coreml")),
         (#"{"event":"stage","stage":"refine","index":3,"stages":4,"model":"K","device":"coreml"}"#,
@@ -44,7 +47,8 @@ struct EngineEventTests {
             input: input,
             outputFolder: URL(filePath: "/out dir", directoryHint: .isDirectory),
             quality: .best,
-            passes: 2
+            passes: 2,
+            vocalPasses: 0
         )
         #expect(args.first == "separate")
         #expect(args.contains("--input=/Music/-a \"song\" sång.wav"))
@@ -52,7 +56,16 @@ struct EngineEventTests {
         #expect(args.contains { $0.hasPrefix("--models-dir=/m dir/models") })
         #expect(args.contains("--quality=best"))
         #expect(args.contains("--passes=2"))
+        #expect(args.contains("--vocal-passes=0"))
         #expect(location.estimateArguments(input: input).first == "estimate")
+    }
+
+    @Test func `estimate totals follow both sliders`() {
+        let e = EngineEvent.Estimate(durationSec: 190, vocalSec: 12, vocalPassSec: 11, bestSec: 120, bestPassSec: 90,
+                                     fastSec: 30, fastPassSec: 5)
+        #expect(e.total(.best, passes: 1, vocalPasses: 1) == 120)
+        #expect(e.total(.best, passes: 2, vocalPasses: 3) == 120 + 90 + 22)
+        #expect(e.total(.fast, passes: 3, vocalPasses: 0) == 30 + 10 - 12)
     }
 
     @Test func `output folder mirrors the plugin's`() {

@@ -82,8 +82,8 @@ public:
         beginTest ("runs the engine and reports both stems");
         {
             SeparationJob job;
-            expect (job.start (input, outDir, Quality::fast, 1, loc));
-            expect (! job.start (input, outDir, Quality::fast, 1, loc), "a second start while running must be refused");
+            expect (job.start (input, outDir, Quality::fast, 1, 1, loc));
+            expect (! job.start (input, outDir, Quality::fast, 1, 1, loc), "a second start while running must be refused");
             expect (waitFor ([&] { return ! job.isActive(); }, 180000), "job finished in time");
 
             const auto s = job.snapshot();
@@ -102,14 +102,16 @@ public:
             SeparationJob::requestEstimate (input, estimate, loc);
             expect (waitFor ([&] { return estimate->bestSec.load() > 0.0; }, 15000), "estimate arrived");
             expect (estimate->bestSec.load() > estimate->fastSec.load() && estimate->fastSec.load() > 0.0);
-            expect (estimate->total (Quality::fast, 3) > estimate->total (Quality::fast, 1), "extra passes add time");
+            expect (estimate->total (Quality::fast, 3, 1) > estimate->total (Quality::fast, 1, 1), "extra passes add time");
+            expect (estimate->total (Quality::fast, 1, 2) > estimate->total (Quality::fast, 1, 1), "extra vocal passes add time");
+            expect (estimate->total (Quality::fast, 1, 0) < estimate->total (Quality::fast, 1, 1), "skipping vocals saves time");
         }
 
         beginTest ("best quality runs the RoFormer and reports both stems");
         {
             outDir.deleteRecursively();
             SeparationJob job;
-            expect (job.start (input, outDir, Quality::best, 1, loc));
+            expect (job.start (input, outDir, Quality::best, 1, 1, loc));
             expect (waitFor ([&] { return ! job.isActive(); }, 300000), "best-quality job finished in time");
             const auto s = job.snapshot();
             expect (s.phase == SeparationJob::Phase::finished, "phase finished; error: " + s.error);
@@ -123,7 +125,7 @@ public:
             outDir.deleteRecursively();
             const auto longInput = writeTestWav (dir.getChildFile ("long.wav"), 90.0, 44100.0);
             SeparationJob job;
-            expect (job.start (longInput, outDir, Quality::fast, 1, loc));
+            expect (job.start (longInput, outDir, Quality::fast, 1, 1, loc));
             expect (waitFor ([&] { return job.snapshot().phase == SeparationJob::Phase::running; }, 60000));
             job.cancel();
             expect (waitFor ([&] { return ! job.isActive(); }, 10000), "worker exits promptly after cancel");
@@ -136,7 +138,7 @@ public:
             SeparationJob job;
             EngineLocation missing;
             missing.problem = "VoxSplit's engine is missing";
-            expect (! job.start (input, outDir, Quality::fast, 1, missing));
+            expect (! job.start (input, outDir, Quality::fast, 1, 1, missing));
             expect (job.snapshot().phase == SeparationJob::Phase::failed);
             expect (job.snapshot().error.contains ("missing"));
         }
@@ -146,7 +148,7 @@ public:
             SeparationJob job;
             const auto notAudio = dir.getChildFile ("notes.wav");
             notAudio.replaceWithText ("not audio");
-            expect (job.start (notAudio, outDir, Quality::fast, 1, loc));
+            expect (job.start (notAudio, outDir, Quality::fast, 1, 1, loc));
             expect (waitFor ([&] { return ! job.isActive(); }, 30000));
             const auto s = job.snapshot();
             expect (s.phase == SeparationJob::Phase::failed);

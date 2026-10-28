@@ -64,6 +64,10 @@ public:
         (q == SeparationJob::Quality::best ? passesBest : passesFast) = juce::jlimit (1, 5, n);
     }
 
+    /** Kim Vocal 2 passes; 0 = the input is already vocals. Shared by both qualities. */
+    int getVocalPasses() const noexcept { return vocalPasses.load(); }
+    void setVocalPasses (int n) noexcept { vocalPasses = juce::jlimit (0, 5, n); }
+
     /** "3:10  ·  44.1 kHz  ·  FLAC", read from the file header. */
     juce::String describe (const juce::File&);
 
@@ -75,7 +79,7 @@ private:
     juce::CriticalSection inputLock;
     juce::File inputFile;
     std::atomic<SeparationJob::Quality> quality { SeparationJob::Quality::best };
-    std::atomic<int> passesBest { 1 }, passesFast { 3 };
+    std::atomic<int> passesBest { 1 }, passesFast { 3 }, vocalPasses { 1 };
     std::shared_ptr<SeparationJob::Estimate> estimate = std::make_shared<SeparationJob::Estimate>();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxSplitProcessor)

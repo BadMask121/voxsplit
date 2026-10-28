@@ -53,8 +53,9 @@ struct ProcessManagerTests {
             try await Task.sleep(for: .milliseconds(25))
         }
         let estimates = try #require(manager.estimates)
-        #expect(estimates.best > estimates.fast && estimates.fast > 0)
-        #expect(estimates.total(.fast, passes: 3) > estimates.total(.fast, passes: 1), "extra passes add time")
+        #expect(estimates.bestSec > estimates.fastSec && estimates.fastSec > 0)
+        #expect(estimates.total(.fast, passes: 3, vocalPasses: 1) > estimates.total(.fast, passes: 1, vocalPasses: 1),
+                "extra passes add time")
     }
 
     @Test func `a run reports live progress, then two stems`() async throws {
@@ -95,6 +96,9 @@ struct ProcessManagerTests {
         #expect(manager.passes == 4)
         manager.passes = 9
         #expect(manager.passes == 5, "clamped to 1...5")
+        manager.vocalPasses = 0
+        #expect(manager.vocalPasses == 0, "0 = file is already vocals")
+        manager.vocalPasses = 1
     }
 
     @Test func `cancel ends in cancelled with no stems`() async throws {

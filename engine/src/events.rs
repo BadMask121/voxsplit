@@ -13,6 +13,8 @@ const MAX_MESSAGE: usize = 300;
 #[serde(rename_all = "snake_case")]
 pub enum StageName {
     Vocals,
+    /// A further vocal pass over the previous pass's vocals.
+    VocalsRefine,
     Karaoke,
     /// A further karaoke pass over the current lead.
     Refine,
@@ -96,6 +98,9 @@ pub enum Event<'a> {
     /// Expected seconds per quality with one karaoke pass, and per extra pass.
     Estimate {
         duration_sec: f64,
+        /// The first vocal pass (incl. model load), and each extra vocal pass.
+        vocal_sec: f64,
+        vocal_pass_sec: f64,
         best_sec: f64,
         best_pass_sec: f64,
         fast_sec: f64,
@@ -166,12 +171,16 @@ fn clamp<'a>(event: &'a Event<'a>) -> Event<'a> {
         },
         Event::Estimate {
             duration_sec,
+            vocal_sec,
+            vocal_pass_sec,
             best_sec,
             best_pass_sec,
             fast_sec,
             fast_pass_sec,
         } => Event::Estimate {
             duration_sec: secs(duration_sec),
+            vocal_sec: secs(vocal_sec),
+            vocal_pass_sec: secs(vocal_pass_sec),
             best_sec: secs(best_sec),
             best_pass_sec: secs(best_pass_sec),
             fast_sec: secs(fast_sec),

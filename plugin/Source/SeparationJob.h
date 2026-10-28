@@ -53,7 +53,7 @@ public:
 
     /** Returns false (and records why) if a run is already active or the engine is missing. */
     bool start (const juce::File& input, const juce::File& outDir, Quality quality, int passes,
-                const EngineLocation& location = locateEngine());
+                int vocalPasses, const EngineLocation& location = locateEngine());
     void cancel();
 
     /** Rebuilds a finished state from a saved project, if the stems still exist. */
@@ -69,16 +69,21 @@ public:
         Filled in on a background thread; read it from the UI by polling `version`. */
     struct Estimate
     {
-        // Seconds with one karaoke pass, and per extra pass.
-        std::atomic<double> bestSec { -1.0 }, bestPassSec { 0.0 }, fastSec { -1.0 }, fastPassSec { 0.0 };
+        // Seconds with one vocal + one karaoke pass, and per extra pass of each model.
+        std::atomic<double> bestSec { -1.0 }, bestPassSec { 0.0 }, fastSec { -1.0 }, fastPassSec { 0.0 },
+                            vocalSec { 0.0 }, vocalPassSec { 0.0 };
         std::atomic<juce::uint32> version { 0 };
 
         /** Expected total, or a negative number while still estimating. */
-        double total (Quality q, int passes) const
+        double total (Quality q, int passes, int vocalPasses) const
         {
             const auto base = q == Quality::best ? bestSec.load() : fastSec.load();
             const auto extra = q == Quality::best ? bestPassSec.load() : fastPassSec.load();
-            return base < 0.0 ? -1.0 : base + (double) juce::jmax (0, passes - 1) * extra;
+            if (base < 0.0)
+                return -1.0;
+            const auto vocals = vocalPasses == 0 ? -vocalSec.load()
+                                                 : (double) (vocalPasses - 1) * vocalPassSec.load();
+            return base + (double) juce::jmax (0, passes - 1) * extra + vocals;
         }
     };
 

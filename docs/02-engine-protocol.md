@@ -18,8 +18,10 @@ voxsplit-engine probe
 
 `estimate` reads the file's length from its header, without decoding it, and
 prints one `estimate` event: the expected seconds for each quality with one
-karaoke pass, plus the cost of each extra pass. A frontend's total for `n`
-passes is `x_sec + (n − 1) · x_pass_sec`. It
+vocal pass and one karaoke pass, plus the cost of each extra pass of either
+model. A frontend's total for `v` vocal and `k` karaoke passes is
+`x_sec + (k − 1)·x_pass_sec + (v − 1)·vocal_pass_sec`, minus `vocal_sec` when
+`v = 0`. It
 takes well under a second, so frontends call it as soon as a file is chosen.
 
 **How estimates work.** Every model has a load time and a time per chunk. The
@@ -39,7 +41,8 @@ RoFormer for Core ML, which is about a minute slower once.
 | `--models-dir=<dir>` | bundled models | Folder holding all model files and sidecars. Frontends pass their bundle's `Resources/models`. |
 | `--vocal-model=<path.onnx>` | `Kim_Vocal_2.onnx` | Stage 1, mix → vocals. Sidecar `<same name>.json` required. |
 | `--karaoke-model=<path.onnx>` | chosen by `--quality` | Lead/backing model. MDX karaoke models output the backing side; RoFormer karaoke models output the lead (the sidecar's `primary_stem` says which). |
-| `--input-is-vocals` | off | Skip stage 1 (input is already an a cappella). |
+| `--vocal-passes=<0–5>` | `1` | Kim Vocal 2 passes. `0` skips vocal extraction (the input is already vocals); each extra pass re-runs the model on its own output and moves the instrument bleed it finds into the instrumental. |
+| `--input-is-vocals` | off | Same as `--vocal-passes=0`. |
 | `--keep-instrumental` | off | Also write `instrumental.wav` (mix − vocals). |
 | `--passes=<1–5>` | `1` best, `3` fast | Karaoke passes. The first splits the vocals; each further pass re-runs the karaoke model on the current lead and moves the backing it still finds into the backing stem. `lead + backing` stays equal to the vocals. |
 | `--device=auto\|coreml\|cuda\|directml\|cpu` | `auto` | An explicit device that fails to initialise is an error (`model_load`). `auto` falls back to CPU. |
@@ -69,9 +72,9 @@ warnings, panics).
 | `event` | Fields | When |
 | --- | --- | --- |
 | `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
-| `estimate` | `duration_sec`, `best_sec`, `best_pass_sec`, `fast_sec`, `fast_pass_sec` (one pass, and each extra pass) | `estimate` subcommand only |
+| `estimate` | `duration_sec`, `vocal_sec` / `vocal_pass_sec` (first and each extra vocal pass), `best_sec` / `fast_sec` (one vocal + one karaoke pass), `best_pass_sec` / `fast_pass_sec` (each extra karaoke pass) | `estimate` subcommand only |
 | `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*), `estimate_sec` (expected total) | input decoded |
-| `stage` | `stage` (`vocals`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
+| `stage` | `stage` (`vocals`\|`vocals_refine`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
 | `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally), `eta_sec` (seconds left: the measured rate of the current stage plus estimates for later ones) | after each chunk (throttled to ≥0.5% steps) |
 | `log` | `level` (`info`\|`warn`), `message` | notable milestones |
 | `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
