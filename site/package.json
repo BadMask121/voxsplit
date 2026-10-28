@@ -1,6 +1,6 @@
 {
   "name": "voxsplit-site",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "voxsplit.jeffrey.build: the download page, the install script and the .pkg downloads (Cloudflare Worker + static assets + R2).",
   "type": "module",

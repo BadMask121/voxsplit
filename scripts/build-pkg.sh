@@ -15,6 +15,10 @@ grep -q "project(VoxSplit VERSION $VERSION " "$ROOT/plugin/CMakeLists.txt" \
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/macos/Info.plist")" == "$VERSION" ]] \
   || die "macos/Info.plist version differs from engine $VERSION"
 
+# The engine builds with --locked; after a version bump its own entry in Cargo.lock is
+# stale. Refresh just that entry (no network, no dependency changes).
+cargo update --manifest-path "$ROOT/engine/Cargo.toml" -p voxsplit-engine --offline --quiet
+
 # Built and staged outside the checkout (iCloud stamps Finder metadata on bundles there).
 WORK="$HOME/Library/Caches/VoxSplit/pkg"
 export VOXSPLIT_STAGE="$WORK/bundles"
