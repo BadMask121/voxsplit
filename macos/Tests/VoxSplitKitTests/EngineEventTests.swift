@@ -8,6 +8,8 @@ struct EngineEventTests {
          EngineEvent.start(stages: 2, durationSec: 213.4, sampleRate: 48000)),
         (#"{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2","device":"coreml"}"#,
          .stage(.vocals, index: 1, stages: 2, model: "Kim Vocal 2", device: "coreml")),
+        (#"{"event":"stage","stage":"refine","index":3,"stages":4,"model":"K","device":"coreml"}"#,
+         .stage(.refine, index: 3, stages: 4, model: "K", device: "coreml")),
         (#"{"event":"progress","stage":"karaoke","fraction":0.5,"overall":0.75}"#,
          .progress(.karaoke, fraction: 0.5, overall: 0.75)),
         (#"{"event":"log","level":"warn","message":"coreml unavailable"}"#,

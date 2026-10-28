@@ -3,7 +3,12 @@ import Foundation
 /// One line of the engine's JSON-Lines stdout (docs/02-engine-protocol.md).
 public enum EngineEvent: Sendable, Equatable {
     public enum Stage: String, Sendable {
-        case vocals, karaoke
+        /// mix → vocals
+        case vocals
+        /// vocals → lead + backing
+        case karaoke
+        /// a further karaoke pass that pulls leftover backing out of the lead
+        case refine
     }
 
     public enum Stem: String, Sendable {

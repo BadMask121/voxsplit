@@ -216,7 +216,12 @@ struct ContentView: View {
     private var progressLabel: String {
         switch manager.phase {
         case .preparing: "Loading models"
-        case .running: manager.stage == .vocals ? "Isolating vocals" : "Splitting lead from backing"
+        case .running:
+            switch manager.stage {
+            case .vocals: "Isolating vocals"
+            case .refine: "Cleaning up the lead"
+            default: "Splitting lead from backing"
+            }
         case .finished: "Done"
         default: ""
         }

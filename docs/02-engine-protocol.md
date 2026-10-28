@@ -25,6 +25,7 @@ voxsplit-engine probe
 | `--karaoke-model=<path.onnx>` | bundled `UVR_MDXNET_KARA_2.onnx` | Stage 2, vocals → backing (lead = vocals − backing). |
 | `--input-is-vocals` | off | Skip stage 1 (input is already an a cappella). |
 | `--keep-instrumental` | off | Also write `instrumental.wav` (mix − vocals). |
+| `--passes=<1–5>` | `3` | Karaoke passes. The first splits the vocals; each further pass re-runs the karaoke model on the current lead and moves the backing it still finds into the backing stem. `lead + backing` stays equal to the vocals. |
 | `--device=auto\|coreml\|cuda\|directml\|cpu` | `auto` | An explicit device that fails to initialise is an error (`model_load`). `auto` falls back to CPU. |
 | `--overlap=<0.0–0.95>` | `0.5` | Chunk overlap. Higher means smoother and slower. Chunks always share at least `n_fft` samples, so `0` means "minimum overlap", never abutting chunks. |
 | `--batch=<1–16>` | `1` | Chunks per inference call. |
@@ -53,8 +54,8 @@ warnings, panics).
 | --- | --- | --- |
 | `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
 | `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*) | input decoded |
-| `stage` | `stage` (`vocals`\|`karaoke`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
-| `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1) | after each chunk (throttled to ≥0.5% steps) |
+| `stage` | `stage` (`vocals`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
+| `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally) | after each chunk (throttled to ≥0.5% steps) |
 | `log` | `level` (`info`\|`warn`), `message` | notable milestones |
 | `output` | `stem` (`lead`\|`backing`\|`instrumental`), `path` | a stem has been finalised on disk |
 | `done` | `elapsed_sec` | success, just before exit 0 |

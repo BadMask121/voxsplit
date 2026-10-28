@@ -1,11 +1,14 @@
-//! The two-stage lead/backing pipeline:
+//! The lead/backing pipeline:
 //!
 //! 1. `mix → vocal model → vocals` (and optionally `instrumental = mix − vocals`)
 //! 2. `vocals → karaoke model → backing`, `lead = vocals − backing`
+//! 3. Refinement passes: the karaoke model runs again on the current lead, and
+//!    whatever backing it still finds moves from the lead into the backing stem.
+//!    Each pass catches bleed the previous one missed.
 //!
 //! As in UVR, a model's primary output is scaled by its `compensate` factor and
 //! the complementary stem is the input minus that scaled estimate, so
-//! `lead + backing` reconstructs stage 1's vocals exactly.
+//! `lead + backing` reconstructs stage 1's vocals exactly after every pass.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,6 +33,8 @@ pub struct Job {
     pub karaoke_model: PathBuf,
     pub input_is_vocals: bool,
     pub keep_instrumental: bool,
+    /// Karaoke passes (1 = a single split, more = refine the lead further).
+    pub passes: u8,
     pub device: Device,
     pub separate: SeparateOptions,
     pub bit_depth: BitDepth,
@@ -61,7 +66,9 @@ pub fn run(
         .map_err(EngineError::Write)?;
 
     let decoded = audio::decode(&job.input).map_err(EngineError::Decode)?;
-    let stages = if vocal_cfg.is_some() { 2 } else { 1 };
+    let passes = job.passes.max(1);
+    let karaoke_stage = if vocal_cfg.is_some() { 2 } else { 1 };
+    let stages = karaoke_stage - 1 + passes;
     let source_rate = decoded.sample_rate;
     events::emit(&Event::Start {
         version: events::VERSION,
@@ -136,46 +143,64 @@ pub fn run(
     };
     cancel.check()?;
 
-    // Stage 2: vocals → backing, lead = vocals − backing. Stage 1's session was
-    // dropped above, so only one model is resident at a time.
+    // Stage 2 and refinement passes, with one karaoke session for all of them.
+    // Stage 1's session was dropped above, so only one model is resident at a time.
     let mut model = load(env, job, &job.karaoke_model, &karaoke_cfg)?;
-    events::emit(&Event::Stage {
-        stage: StageName::Karaoke,
-        index: stages,
-        stages,
-        model: &karaoke_cfg.name,
-        device: model.1,
-    });
-    let mut progress = Progress::new(StageName::Karaoke, stages - 1, stages);
     let comp = karaoke_cfg.compensate;
-    separator::separate(
-        &mut model.0,
-        &karaoke_cfg,
-        &vocals,
-        job.separate,
-        |done, total| {
-            cancel.check()?;
-            progress.update(done, total);
-            Ok(())
-        },
-        |start, l, r| {
-            let bl: Vec<f32> = l.iter().map(|v| v * comp).collect();
-            let br: Vec<f32> = r.iter().map(|v| v * comp).collect();
-            let ll: Vec<f32> = bl
-                .iter()
-                .zip(&vocals.l[start..])
-                .map(|(b, v)| v - b)
-                .collect();
-            let lr: Vec<f32> = br
-                .iter()
-                .zip(&vocals.r[start..])
-                .map(|(b, v)| v - b)
-                .collect();
-            backing.write(&bl, &br).map_err(EngineError::Write)?;
-            lead.write(&ll, &lr).map_err(EngineError::Write)
-        },
-    )?;
-    cancel.check()?;
+    let mut lead_audio = vocals;
+    let mut backing_audio = Stereo::zeros(lead_audio.len());
+    for pass in 0..passes {
+        let index = karaoke_stage + pass;
+        let stage = if pass == 0 {
+            StageName::Karaoke
+        } else {
+            StageName::Refine
+        };
+        events::emit(&Event::Stage {
+            stage,
+            index,
+            stages,
+            model: &karaoke_cfg.name,
+            device: model.1,
+        });
+        let mut progress = Progress::new(stage, index - 1, stages);
+        let mut found = Stereo::with_capacity(lead_audio.len());
+        separator::separate(
+            &mut model.0,
+            &karaoke_cfg,
+            &lead_audio,
+            job.separate,
+            |done, total| {
+                cancel.check()?;
+                progress.update(done, total);
+                Ok(())
+            },
+            |_, l, r| {
+                let bl: Vec<f32> = l.iter().map(|v| v * comp).collect();
+                let br: Vec<f32> = r.iter().map(|v| v * comp).collect();
+                found.extend(&bl, &br);
+                Ok(())
+            },
+        )?;
+        // Move what this pass found from the lead to the backing stem.
+        for (channel, (lead_ch, backing_ch)) in [
+            (&found.l, (&mut lead_audio.l, &mut backing_audio.l)),
+            (&found.r, (&mut lead_audio.r, &mut backing_audio.r)),
+        ] {
+            for ((lead_s, backing_s), f) in
+                lead_ch.iter_mut().zip(backing_ch.iter_mut()).zip(channel)
+            {
+                *lead_s -= f;
+                *backing_s += f;
+            }
+        }
+        cancel.check()?;
+    }
+    lead.write(&lead_audio.l, &lead_audio.r)
+        .map_err(EngineError::Write)?;
+    backing
+        .write(&backing_audio.l, &backing_audio.r)
+        .map_err(EngineError::Write)?;
 
     let mut outputs = vec![
         (Stem::Lead, lead.finish().map_err(EngineError::Write)?),

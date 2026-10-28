@@ -172,7 +172,9 @@ void VoxSplitEditor::sync (bool initial)
         device = s.device;
 
     // Progress strip.
-    const auto stageText = s.stage == "vocals" ? juce::String ("Isolating vocals") : juce::String ("Splitting lead from backing");
+    const auto stageText = s.stage == "vocals"  ? juce::String ("Isolating vocals")
+                         : s.stage == "refine"  ? juce::String ("Cleaning up the lead")
+                                                : juce::String ("Splitting lead from backing");
     const auto stageCount = "Stage " + juce::String (s.stageIndex) + " of " + juce::String (s.stages);
     switch (s.phase)
     {

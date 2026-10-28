@@ -14,6 +14,8 @@ const MAX_MESSAGE: usize = 300;
 pub enum StageName {
     Vocals,
     Karaoke,
+    /// A further karaoke pass over the current lead.
+    Refine,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -214,6 +216,14 @@ mod tests {
             "{\"event\":\"output\",\"stem\":\"lead\",\"path\":\"/tmp/a b/lead_vocals.wav\"}\n"
         );
         assert_eq!(to_line(&Event::Cancelled), "{\"event\":\"cancelled\"}\n");
+        assert!(
+            to_line(&Event::Progress {
+                stage: StageName::Refine,
+                fraction: 0.5,
+                overall: 0.875
+            })
+            .contains("\"stage\":\"refine\"")
+        );
         assert_eq!(
             to_line(&Event::Stage {
                 stage: StageName::Karaoke,

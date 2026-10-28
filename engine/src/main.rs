@@ -53,6 +53,10 @@ struct SeparateArgs {
     /// Also write instrumental.wav (mix − vocals).
     #[arg(long)]
     keep_instrumental: bool,
+    /// Karaoke passes: the first splits the vocals, each further pass pulls
+    /// remaining backing vocals out of the lead.
+    #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=5))]
+    passes: u8,
     #[arg(long, value_enum, default_value_t = Device::Auto)]
     device: Device,
     /// Fraction of each chunk shared with the next (higher = smoother, slower).
@@ -158,6 +162,7 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         out_dir,
         input_is_vocals: args.input_is_vocals,
         keep_instrumental: args.keep_instrumental,
+        passes: args.passes,
         device: args.device,
         separate: SeparateOptions {
             overlap: args.overlap,

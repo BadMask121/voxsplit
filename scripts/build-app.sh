@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build the SwiftUI app and assemble dist/VoxSplit.app with the engine and models embedded.
+#   --no-dist                    stop after the signed staged copy (e.g. while dist/VoxSplit.app is running)
 #   VOXSPLIT_SWIFT_BUILD=<dir>   SwiftPM scratch path (default: ~/Library/Caches/VoxSplit/swift-build)
 set -euo pipefail
 
@@ -23,6 +24,10 @@ cp -f "$BIN/VoxSplit" "$APP/Contents/MacOS/VoxSplit"
 cp -f "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 "$ROOT/scripts/embed.sh" "$APP"
+if [[ "${1:-}" == "--no-dist" ]]; then
+  echo "$APP"
+  exit 0
+fi
 
 mkdir -p "$ROOT/dist"
 rm -rf "$ROOT/dist/VoxSplit.app"
