@@ -1,6 +1,6 @@
 {
   "name": "voxsplit-site",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "voxsplit.triplejmusic.art: the download page, the install script and the .pkg downloads (Cloudflare Worker + static assets + R2).",
   "type": "module",

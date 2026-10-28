@@ -30,7 +30,7 @@ async function download(request, env, key) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
   }
-  if (key === `${release.file}.sha256`) {
+  if (key === `${release.file}.sha256` || key === "latest.sha256") {
     return new Response(`${release.sha256}  ${release.file}\n`, {
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=300" },
     });

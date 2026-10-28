@@ -2,7 +2,8 @@
 # VoxSplit __VERSION__ installer for macOS (Apple silicon, macOS 14+).
 #
 #   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash
-#       The app, the VST3/AU plugins and the `voxsplit` command (asks for your password).
+#       The app, the FL Studio plugin (VST3 + AU) and the `voxsplit` command
+#       (asks for your password).
 #   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --cli
 #       Only the `voxsplit` command, in your home folder (no password).
 #   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash -s -- --uninstall
@@ -60,7 +61,7 @@ main() {
 
 install_all() {
   local tmp="$1"
-  step "Installing the app, the plugins and the voxsplit command"
+  step "Installing the app, the FL Studio plugin and the voxsplit command"
   note "macOS asks for your password to install into /Applications and /Library."
   sudo installer -pkg "$tmp/VoxSplit.pkg" -target / >/dev/null </dev/tty \
     || fail "the installer did not finish."
@@ -71,7 +72,7 @@ install_all() {
   ${BOLD}FL Studio${RESET}  Options → Manage plugins → Find more plugins, then put VoxSplit on a mixer insert
   ${BOLD}Terminal${RESET}   voxsplit separate song.mp3
 
-  Setup help: https://voxsplit.triplejmusic.art/#setup
+  Setup help: https://voxsplit.triplejmusic.art/#fl-studio
 EOF
 }
 
@@ -118,7 +119,10 @@ uninstall() {
   if ((${#found[@]})); then
     note "macOS asks for your password to remove the system-wide install."
     sudo rm -rf "${found[@]}" </dev/tty
-    sudo pkgutil --forget com.voxsplit.pkg >/dev/null 2>&1 </dev/tty || true
+    local id
+    for id in com.voxsplit.pkg com.voxsplit.pkg.core com.voxsplit.pkg.app com.voxsplit.pkg.plugin com.voxsplit.pkg.cli; do
+      sudo pkgutil --forget "$id" >/dev/null 2>&1 </dev/tty || true
+    done
   fi
   ok "VoxSplit removed. Your stems in ~/Music/VoxSplit were kept."
 }
@@ -128,7 +132,8 @@ usage() {
 VoxSplit installer (Apple silicon, macOS 14+)
 
   curl -fsSL https://voxsplit.triplejmusic.art/install.sh | bash
-      The app, the VST3/AU plugins and the `voxsplit` command (asks for your password).
+      The app, the FL Studio plugin (VST3 + AU) and the `voxsplit` command
+      (asks for your password).
   ... | bash -s -- --cli
       Only the `voxsplit` command, in your home folder (no password).
   ... | bash -s -- --uninstall

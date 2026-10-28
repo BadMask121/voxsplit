@@ -32,3 +32,4 @@ test("download links are https outside local dev", () => {
   assert.equal(publicOrigin(new URL("http://voxsplit.triplejmusic.art/install.sh")), "https://voxsplit.triplejmusic.art");
   assert.equal(publicOrigin(new URL("http://localhost:8799/install.sh")), "http://localhost:8799");
 });
+
