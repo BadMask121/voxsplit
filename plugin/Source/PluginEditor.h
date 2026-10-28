@@ -40,6 +40,7 @@ private:
     vox::PressableButton primary { "Separate", vox::PressableButton::Style::primary };
     vox::PressableButton logToggle { "Show log", vox::PressableButton::Style::link };
     vox::SegmentedToggle quality { { "Best", "Fast" } };
+    vox::PassSlider passes { 1, 5 };
     vox::ProgressStrip progress;
     juce::OwnedArray<vox::StemRow> rows;
     juce::TextEditor console;
@@ -49,7 +50,7 @@ private:
     int shownLogSize = -1;
     juce::String status, device;
     juce::Colour statusColour;
-    juce::Rectangle<int> headerArea, statusArea, rowsArea;
+    juce::Rectangle<int> headerArea, statusArea, rowsArea, qualityLabelArea, passesLabelArea, passesValueArea;
     bool logOpen = false;
     vox::Tween progressAlpha;
 

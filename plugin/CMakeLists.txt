@@ -70,6 +70,9 @@ if(VOXSPLIT_BUILD_TESTS)
     juce_add_console_app(VoxSplitTests PRODUCT_NAME "VoxSplitTests")
     target_sources(VoxSplitTests PRIVATE
         Tests/PluginTests.cpp
+        Tests/Snapshot.cpp
+        Source/Theme.cpp
+        Source/Widgets.cpp
         Source/SeparationJob.cpp
         Source/EngineLocator.cpp
         Source/StemPreview.cpp)
@@ -78,6 +81,8 @@ if(VOXSPLIT_BUILD_TESTS)
         JUCE_USE_CURL=0
         VOXSPLIT_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
     target_link_libraries(VoxSplitTests PRIVATE
+        juce::juce_animation
+        juce::juce_gui_basics
         juce::juce_audio_devices
         juce::juce_audio_formats
         juce::juce_recommended_config_flags

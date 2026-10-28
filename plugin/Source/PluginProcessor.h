@@ -54,6 +54,16 @@ public:
     const std::shared_ptr<SeparationJob::Estimate>& getEstimate() const noexcept { return estimate; }
     void setQuality (SeparationJob::Quality q) noexcept { quality = q; }
 
+    /** Refinement passes, remembered separately for each quality. */
+    int getPasses (SeparationJob::Quality q) const noexcept
+    {
+        return q == SeparationJob::Quality::best ? passesBest.load() : passesFast.load();
+    }
+    void setPasses (SeparationJob::Quality q, int n) noexcept
+    {
+        (q == SeparationJob::Quality::best ? passesBest : passesFast) = juce::jlimit (1, 5, n);
+    }
+
     /** "3:10  ·  44.1 kHz  ·  FLAC", read from the file header. */
     juce::String describe (const juce::File&);
 
@@ -65,6 +75,7 @@ private:
     juce::CriticalSection inputLock;
     juce::File inputFile;
     std::atomic<SeparationJob::Quality> quality { SeparationJob::Quality::best };
+    std::atomic<int> passesBest { 1 }, passesFast { 3 };
     std::shared_ptr<SeparationJob::Estimate> estimate = std::make_shared<SeparationJob::Estimate>();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VoxSplitProcessor)

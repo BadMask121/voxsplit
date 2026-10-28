@@ -29,12 +29,23 @@ pub struct SeparateOptions {
     pub denoise: bool,
 }
 
+impl SeparateOptions {
+    /// Model calls per chunk: denoising runs MDX models twice.
+    pub fn runs_per_chunk(&self, cfg: &ModelConfig) -> f64 {
+        if self.denoise && matches!(cfg.arch, Arch::Mdx { .. }) {
+            2.0
+        } else {
+            1.0
+        }
+    }
+}
+
 impl Default for SeparateOptions {
     fn default() -> Self {
         Self {
             overlap: 0.5,
             batch: 1,
-            denoise: false,
+            denoise: true,
         }
     }
 }
@@ -91,7 +102,7 @@ pub fn separate(
 
     let starts: Vec<usize> = (0..g.padded_len).step_by(g.step).collect();
     let mut done = 0;
-    let denoise = opts.denoise && matches!(cfg.arch, Arch::Mdx { .. });
+    let denoise = opts.runs_per_chunk(cfg) > 1.0;
     for group in starts.chunks(batch) {
         let mut model_in = Vec::with_capacity(group.len() * cfg.input_len());
         let mut chunk_specs = Vec::with_capacity(group.len());

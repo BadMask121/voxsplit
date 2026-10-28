@@ -77,9 +77,11 @@ struct SeparateArgs {
     /// Chunks per inference call.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=16))]
     batch: u8,
-    /// Average f(x) and −f(−x): cleaner stems, twice the work.
+    /// Skip the denoise pass. By default each MDX model also runs on the phase-inverted
+    /// input and the two results are averaged, which cancels the faint constant hiss
+    /// MDX-Net adds to its outputs (about -70 dBFS, above 6 kHz). Costs 2x on MDX stages.
     #[arg(long)]
-    denoise: bool,
+    no_denoise: bool,
     #[arg(long, value_enum, default_value_t = BitDepthArg::F32)]
     bit_depth: BitDepthArg,
 }
@@ -210,7 +212,7 @@ fn separate(args: SeparateArgs) -> Result<(), EngineError> {
         separate: SeparateOptions {
             overlap: 0.5, // replaced per model by Job::options_for
             batch: args.batch as usize,
-            denoise: args.denoise,
+            denoise: !args.no_denoise,
         },
         bit_depth: match args.bit_depth {
             BitDepthArg::F32 => BitDepth::F32,
@@ -234,23 +236,28 @@ fn estimate(args: EstimateArgs) -> Result<(), EngineError> {
     let samples = (duration * vocal.sample_rate as f64) as usize;
     let timings = TimingStore::open(timings_path());
     let device = device::expected_name(args.device);
-    let total = |karaoke: &ModelConfig, passes: u8| -> f64 {
-        pipeline::stage_estimates(
+    // Two passes: [vocals, first karaoke pass (incl. load), one extra pass].
+    let split = |karaoke: &ModelConfig| -> (f64, f64) {
+        let stages = pipeline::stage_estimates(
             &timings,
             device,
             Some(&vocal),
             karaoke,
-            passes,
+            2,
             None,
+            SeparateOptions::default(),
             samples,
-        )
-        .iter()
-        .sum()
+        );
+        (stages[0] + stages[1], stages[2])
     };
+    let (best_sec, best_pass_sec) = split(&config(KARAOKE_BEST)?);
+    let (fast_sec, fast_pass_sec) = split(&config(KARAOKE_FAST)?);
     events::emit(&Event::Estimate {
         duration_sec: duration,
-        best_sec: total(&config(KARAOKE_BEST)?, 1),
-        fast_sec: total(&config(KARAOKE_FAST)?, 3),
+        best_sec,
+        best_pass_sec,
+        fast_sec,
+        fast_pass_sec,
     });
     Ok(())
 }

@@ -18,8 +18,9 @@ public enum EngineEvent: Sendable, Equatable {
     case start(stages: Int, durationSec: Double, sampleRate: Int, estimateSec: Double?)
     case stage(Stage, index: Int, stages: Int, model: String, device: String)
     case progress(Stage, fraction: Double, overall: Double, etaSec: Double?)
-    /// From `voxsplit-engine estimate`: expected seconds at each quality.
-    case estimate(durationSec: Double, bestSec: Double, fastSec: Double)
+    /// From `voxsplit-engine estimate`: expected seconds at each quality with one
+    /// karaoke pass, and per extra pass.
+    case estimate(durationSec: Double, bestSec: Double, bestPassSec: Double, fastSec: Double, fastPassSec: Double)
     case log(level: String, message: String)
     case output(Stem, url: URL)
     case done(elapsedSec: Double)
@@ -48,7 +49,8 @@ public enum EngineEvent: Sendable, Equatable {
             self = .progress(stage, fraction: raw.fraction ?? 0, overall: raw.overall ?? 0, etaSec: raw.etaSec)
         case "estimate":
             guard let best = raw.bestSec, let fast = raw.fastSec else { self = .other(name: raw.event); return }
-            self = .estimate(durationSec: raw.durationSec ?? 0, bestSec: best, fastSec: fast)
+            self = .estimate(durationSec: raw.durationSec ?? 0, bestSec: best, bestPassSec: raw.bestPassSec ?? 0,
+                             fastSec: fast, fastPassSec: raw.fastPassSec ?? 0)
         case "log":
             self = .log(level: raw.level ?? "info", message: raw.message ?? "")
         case "output":
@@ -88,5 +90,7 @@ public enum EngineEvent: Sendable, Equatable {
         var etaSec: Double?
         var bestSec: Double?
         var fastSec: Double?
+        var bestPassSec: Double?
+        var fastPassSec: Double?
     }
 }

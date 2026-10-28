@@ -8,8 +8,8 @@ struct EngineEventTests {
          EngineEvent.start(stages: 2, durationSec: 213.4, sampleRate: 48000, estimateSec: nil)),
         (#"{"event":"start","stages":2,"duration_sec":10,"sample_rate":44100,"channels":2,"estimate_sec":42.5}"#,
          .start(stages: 2, durationSec: 10, sampleRate: 44100, estimateSec: 42.5)),
-        (#"{"event":"estimate","duration_sec":190.0,"best_sec":127.4,"fast_sec":22.6}"#,
-         .estimate(durationSec: 190, bestSec: 127.4, fastSec: 22.6)),
+        (#"{"event":"estimate","duration_sec":190.0,"best_sec":127.4,"best_pass_sec":91.0,"fast_sec":22.6,"fast_pass_sec":3.6}"#,
+         .estimate(durationSec: 190, bestSec: 127.4, bestPassSec: 91, fastSec: 22.6, fastPassSec: 3.6)),
         (#"{"event":"stage","stage":"vocals","index":1,"stages":2,"model":"Kim Vocal 2","device":"coreml"}"#,
          .stage(.vocals, index: 1, stages: 2, model: "Kim Vocal 2", device: "coreml")),
         (#"{"event":"stage","stage":"refine","index":3,"stages":4,"model":"K","device":"coreml"}"#,
@@ -43,13 +43,15 @@ struct EngineEventTests {
         let args = location.separateArguments(
             input: input,
             outputFolder: URL(filePath: "/out dir", directoryHint: .isDirectory),
-            quality: .best
+            quality: .best,
+            passes: 2
         )
         #expect(args.first == "separate")
         #expect(args.contains("--input=/Music/-a \"song\" sång.wav"))
         #expect(args.contains { $0.hasPrefix("--out-dir=/out dir") })
         #expect(args.contains { $0.hasPrefix("--models-dir=/m dir/models") })
         #expect(args.contains("--quality=best"))
+        #expect(args.contains("--passes=2"))
         #expect(location.estimateArguments(input: input).first == "estimate")
     }
 

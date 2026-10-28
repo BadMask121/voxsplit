@@ -7,10 +7,14 @@
 //!
 //!   cargo run --release --example stem_check -- diff <out-dir-a> <out-dir-b>
 //!       SNR of each stem in A against the same stem in B (e.g. CoreML vs CPU).
+//!
+//!   cargo run --release --example stem_check -- level <out-dir>
+//!       Each stem's level and its level above 6 kHz (hiss shows up there).
 
 use std::path::Path;
 
 use voxsplit::audio::{self, Stereo};
+use voxsplit::stft::Stft;
 
 fn read_stem(dir: &Path, name: &str) -> Stereo {
     audio::decode(&dir.join(name))
@@ -78,8 +82,42 @@ fn main() {
                 println!("{name:<20} {:>7.1} dB SNR (a vs b)", snr(&sb, &sa));
             }
         }
+        ["level", dir] => {
+            for name in ["lead_vocals.wav", "backing_vocals.wav", "instrumental.wav"] {
+                if !Path::new(dir).join(name).exists() {
+                    continue;
+                }
+                let s = read_stem(Path::new(dir), name);
+                let total = energy(&s) / (2 * s.len()).max(1) as f64;
+                // Energy above 6 kHz, as a level (Parseval-scaled STFT power).
+                let mut stft = Stft::new(2048, 512);
+                let bins = stft.bins();
+                let cutoff = 6_000 * 2048 / 44_100;
+                let mut hf = 0.0;
+                let mut frames = 0usize;
+                for ch in [&s.l, &s.r] {
+                    let spec = stft.forward(ch);
+                    let n = spec.len() / bins;
+                    frames += n;
+                    for t in 0..n {
+                        for f in cutoff..bins {
+                            hf += spec[t * bins + f].norm_sqr() as f64;
+                        }
+                    }
+                }
+                // Periodic Hann at hop n/4: sum of window^2 per sample is 1.5 * n/4 ... normalise per frame.
+                let hf = hf / (frames.max(1) as f64 * 2048.0 * 2048.0 * 0.375 / 2.0);
+                println!(
+                    "{name:<20} {:>7.1} dBFS overall {:>7.1} dBFS above 6 kHz",
+                    db(total),
+                    db(hf)
+                );
+            }
+        }
         _ => {
-            eprintln!("usage: stem_check null <input> <out-dir> | diff <dir-a> <dir-b>");
+            eprintln!(
+                "usage: stem_check null <input> <out-dir> | diff <dir-a> <dir-b> | level <dir>"
+            );
             std::process::exit(2);
         }
     }

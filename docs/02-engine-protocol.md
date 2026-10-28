@@ -17,7 +17,9 @@ voxsplit-engine probe
 ```
 
 `estimate` reads the file's length from its header, without decoding it, and
-prints one `estimate` event with the expected seconds for both qualities. It
+prints one `estimate` event: the expected seconds for each quality with one
+karaoke pass, plus the cost of each extra pass. A frontend's total for `n`
+passes is `x_sec + (n − 1) · x_pass_sec`. It
 takes well under a second, so frontends call it as soon as a file is chosen.
 
 **How estimates work.** Every model has a load time and a time per chunk. The
@@ -67,7 +69,7 @@ warnings, panics).
 | `event` | Fields | When |
 | --- | --- | --- |
 | `probe` | `version`, `os`, `arch`, `devices: [{name, compiled, available}]` | `probe` subcommand only |
-| `estimate` | `duration_sec`, `best_sec`, `fast_sec` | `estimate` subcommand only |
+| `estimate` | `duration_sec`, `best_sec`, `best_pass_sec`, `fast_sec`, `fast_pass_sec` (one pass, and each extra pass) | `estimate` subcommand only |
 | `start` | `version`, `stages`, `duration_sec`, `sample_rate`, `channels` (all of the *input*), `estimate_sec` (expected total) | input decoded |
 | `stage` | `stage` (`vocals`\|`karaoke`\|`refine`), `index` (1-based), `stages`, `model`, `device` (`coreml`\|`cuda`\|`directml`\|`cpu`) | a stage's model has loaded and inference begins. Between `start` and the first `stage`, the engine is loading (and, the first time, compiling) the model. |
 | `progress` | `stage`, `fraction` (0–1 within stage), `overall` (0–1, stages weighted equally), `eta_sec` (seconds left: the measured rate of the current stage plus estimates for later ones) | after each chunk (throttled to ≥0.5% steps) |

@@ -61,6 +61,7 @@ pub fn overlap_for(requested: Option<f32>, cfg: &ModelConfig) -> f32 {
 
 /// Expected seconds per stage: the vocal stage (if any), then one entry per
 /// karaoke pass. A model's load time is counted on its first stage only.
+#[allow(clippy::too_many_arguments)]
 pub fn stage_estimates(
     timings: &TimingStore,
     device: &str,
@@ -68,16 +69,30 @@ pub fn stage_estimates(
     karaoke: &ModelConfig,
     passes: u8,
     overlap: Option<f32>,
+    opts: SeparateOptions,
     samples: usize,
 ) -> Vec<f64> {
     let mut estimates = Vec::new();
     if let Some(cfg) = vocal {
         let t = timings.get(cfg, device);
-        estimates.push(t.stage_sec(cfg, samples, overlap_for(overlap, cfg), true));
+        estimates.push(t.stage_sec(
+            cfg,
+            samples,
+            overlap_for(overlap, cfg),
+            opts.runs_per_chunk(cfg),
+            true,
+        ));
     }
     let t = timings.get(karaoke, device);
+    let runs = opts.runs_per_chunk(karaoke);
     for pass in 0..passes.max(1) {
-        estimates.push(t.stage_sec(karaoke, samples, overlap_for(overlap, karaoke), pass == 0));
+        estimates.push(t.stage_sec(
+            karaoke,
+            samples,
+            overlap_for(overlap, karaoke),
+            runs,
+            pass == 0,
+        ));
     }
     estimates
 }
@@ -122,6 +137,7 @@ pub fn run(
         &karaoke_cfg,
         passes,
         job.overlap,
+        job.separate,
         work_len,
     );
     events::emit(&Event::Start {
@@ -168,11 +184,12 @@ pub fn run(
             });
             let opts = job.options_for(cfg);
             let chunks = chunk_count(cfg, mix.len(), opts.overlap);
+            let runs = opts.runs_per_chunk(cfg);
             let mut progress = Progress::new(
                 StageName::Vocals,
                 0,
                 stages,
-                chunks as f64 * timings.get(cfg, model.1).chunk_sec,
+                chunks as f64 * runs * timings.get(cfg, model.1).chunk_sec,
                 estimates[1..].iter().sum(),
             );
             let mut vocals = Stereo::with_capacity(mix.len());
@@ -206,7 +223,7 @@ pub fn run(
                 model.1,
                 Timing {
                     load_sec,
-                    chunk_sec: progress.elapsed() / chunks.max(1) as f64,
+                    chunk_sec: progress.elapsed() / (chunks.max(1) as f64 * runs),
                 },
             );
             vocals
@@ -223,10 +240,11 @@ pub fn run(
     let comp = karaoke_cfg.compensate;
     let karaoke_opts = job.options_for(&karaoke_cfg);
     let chunks = chunk_count(&karaoke_cfg, vocals.len(), karaoke_opts.overlap);
+    let runs = karaoke_opts.runs_per_chunk(&karaoke_cfg);
     let chunk_sec = timings.get(&karaoke_cfg, model.1).chunk_sec;
     // The remaining passes, re-estimated for the device that actually loaded.
     for e in estimates.iter_mut().skip(karaoke_stage as usize - 1) {
-        *e = chunks as f64 * chunk_sec;
+        *e = chunks as f64 * runs * chunk_sec;
     }
     let mut inference_sec = 0.0;
     // MDX karaoke models output the backing side; RoFormer karaoke models output
@@ -252,7 +270,7 @@ pub fn run(
             stage,
             index - 1,
             stages,
-            chunks as f64 * chunk_sec,
+            chunks as f64 * runs * chunk_sec,
             estimates[index as usize..].iter().sum(),
         );
         let mut found = Stereo::with_capacity(lead_audio.len());
@@ -300,7 +318,7 @@ pub fn run(
         model.1,
         Timing {
             load_sec,
-            chunk_sec: inference_sec / (chunks.max(1) * passes as usize) as f64,
+            chunk_sec: inference_sec / ((chunks.max(1) * passes as usize) as f64 * runs),
         },
     );
     lead.write(&lead_audio.l, &lead_audio.r)

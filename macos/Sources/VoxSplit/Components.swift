@@ -152,6 +152,87 @@ struct QualityToggle: View {
     }
 }
 
+/// Discrete 1...5 slider. The thumb follows the pointer while dragging, then
+/// springs onto the nearest tick; arrow keys step instantly.
+struct PassesSlider: View {
+    @Binding var value: Int
+    var range: ClosedRange<Int> = 1...5
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dragPosition: Double?
+    @State private var hovering = false
+
+    private let inset: CGFloat = 9
+
+    var body: some View {
+        GeometryReader { geo in
+            let span = max(1, geo.size.width - inset * 2)
+            let steps = Double(range.upperBound - range.lowerBound)
+            let position = dragPosition ?? Double(value - range.lowerBound)
+            let x = { (p: Double) in inset + span * CGFloat(p / steps) }
+
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.surfaceHi).frame(height: 4).padding(.horizontal, inset)
+                Capsule().fill(Theme.text.opacity(0.85))
+                    .frame(width: max(0, x(position) - inset), height: 4)
+                    .offset(x: inset)
+                ForEach(range, id: \.self) { tick in
+                    Circle()
+                        .fill((tick <= value ? Theme.text : Theme.textDim).opacity(0.9))
+                        .frame(width: 3, height: 3)
+                        .position(x: x(Double(tick - range.lowerBound)), y: geo.size.height / 2 + 7.5)
+                }
+                Circle()
+                    .fill(hovering ? .white : Theme.text)
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(dragPosition != nil && !reduceMotion ? 1.2 : 1)
+                    .position(x: x(position), y: geo.size.height / 2)
+                    .animation(.easeOut(duration: dragPosition != nil ? Theme.press : Theme.release), value: dragPosition != nil)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        guard isEnabled else { return }
+                        // Attached to the pointer: no animation while dragging.
+                        let p = min(max(Double((drag.location.x - inset) / span) * steps, 0), steps)
+                        dragPosition = p
+                        let nearest = range.lowerBound + Int(p.rounded())
+                        if nearest != value { value = nearest }
+                    }
+                    .onEnded { _ in
+                        // Release: spring onto the tick (interruptible if grabbed again).
+                        withAnimation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.15)) {
+                            dragPosition = nil
+                        }
+                    }
+            )
+        }
+        .opacity(isEnabled ? 1 : 0.45)
+        .onHover { hovering = $0 && isEnabled }
+        .animation(.easeOut(duration: hovering ? Theme.hover : Theme.hoverOut), value: hovering)
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) { step(-1) }
+        .onKeyPress(.downArrow) { step(-1) }
+        .onKeyPress(.rightArrow) { step(1) }
+        .onKeyPress(.upArrow) { step(1) }
+        .accessibilityElement()
+        .accessibilityLabel("Refinement passes")
+        .accessibilityValue("\(value)")
+        .accessibilityAdjustableAction { direction in
+            _ = step(direction == .increment ? 1 : -1)
+        }
+    }
+
+    private func step(_ delta: Int) -> KeyPress.Result {
+        guard isEnabled else { return .ignored }
+        value = min(max(value + delta, range.lowerBound), range.upperBound) // keyboard: instant
+        return .handled
+    }
+}
+
 /// "about 25 s", "about 2 min 10 s": rounded so the number doesn't flicker.
 func aboutDuration(_ seconds: Double) -> String {
     if seconds < 60 { return "about \(max(5, Int((seconds / 5).rounded(.up)) * 5)) s" }

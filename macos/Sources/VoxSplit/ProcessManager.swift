@@ -44,14 +44,45 @@ final class ProcessManager {
     private(set) var stems: [Stem] = []
     private(set) var elapsed: Double?
     private(set) var log: [LogLine] = []
-    /// Expected seconds per quality for the chosen file (`nil` while estimating).
-    private(set) var estimates: (best: Double, fast: Double)?
+    /// Expected seconds for the chosen file: per quality, with one pass and per
+    /// extra pass (`nil` while estimating).
+    private(set) var estimates: Estimates?
+
+    nonisolated struct Estimates: Sendable {
+        var best, bestPass, fast, fastPass: Double
+
+        func total(_ quality: Quality, passes: Int) -> Double {
+            let extra = Double(max(0, passes - 1))
+            return quality == .best ? best + extra * bestPass : fast + extra * fastPass
+        }
+    }
     /// Seconds left in the current run, as the engine last reported.
     private(set) var eta: Double?
 
     /// Remembered across launches.
     var quality: Quality = Quality(rawValue: UserDefaults.standard.string(forKey: "quality") ?? "") ?? .best {
         didSet { UserDefaults.standard.set(quality.rawValue, forKey: "quality") }
+    }
+
+    /// Refinement passes for each quality (Best defaults to 1, Fast to 3), remembered.
+    private var passesByQuality: [Quality: Int] = Dictionary(uniqueKeysWithValues: Quality.allCases.map { q in
+        let stored = UserDefaults.standard.integer(forKey: "passes.\(q.rawValue)")
+        return (q, stored > 0 ? stored : (q == .best ? 1 : 3))
+    })
+
+    /// Refinement passes for the current quality.
+    var passes: Int {
+        get { passesByQuality[quality] ?? 1 }
+        set {
+            let clamped = min(max(newValue, 1), 5)
+            passesByQuality[quality] = clamped
+            UserDefaults.standard.set(clamped, forKey: "passes.\(quality.rawValue)")
+        }
+    }
+
+    /// Expected seconds for the current quality and passes, if known.
+    var estimatedSeconds: Double? {
+        estimates?.total(quality, passes: passes)
     }
 
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -88,14 +119,14 @@ final class ProcessManager {
         let runner = EngineRunner(executable: location.engine)
         let arguments = location.estimateArguments(input: url)
         estimateTask = Task {
-            let result = OSAllocatedUnfairLock<(Double, Double)?>(initialState: nil)
+            let result = OSAllocatedUnfairLock<Estimates?>(initialState: nil)
             _ = try? await runner.run(arguments: arguments) { output in
-                if case .event(.estimate(_, let best, let fast)) = output {
-                    result.withLock { $0 = (best, fast) }
+                if case .event(.estimate(_, let best, let bestPass, let fast, let fastPass)) = output {
+                    result.withLock { $0 = Estimates(best: best, bestPass: bestPass, fast: fast, fastPass: fastPass) }
                 }
             }
-            guard !Task.isCancelled, input == url, let (best, fast) = result.withLock({ $0 }) else { return }
-            estimates = (best, fast)
+            guard !Task.isCancelled, input == url, let found = result.withLock({ $0 }) else { return }
+            estimates = found
         }
     }
 
@@ -121,7 +152,8 @@ final class ProcessManager {
         let arguments = location.separateArguments(
             input: input,
             outputFolder: EngineLocator.defaultOutputFolder(for: input),
-            quality: quality
+            quality: quality,
+            passes: passes
         )
         eta = nil
 

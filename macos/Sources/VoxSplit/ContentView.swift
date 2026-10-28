@@ -25,7 +25,11 @@ struct ContentView: View {
             )
             .frame(height: 150)
             .disabled(manager.phase.isActive)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
+
+            settingsRow
+                .frame(height: 32)
+                .padding(.bottom, 14)
 
             actionRow
                 .frame(height: 36)
@@ -118,11 +122,32 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentTransition(.opacity)
                 .animation(Theme.easeOut(Theme.fade), value: status)
-
-            QualityToggle(quality: Bindable(manager).quality)
-                .frame(width: 124, height: 32)
-                .disabled(manager.phase.isActive)
         }
+    }
+
+    /// Quality [Best|Fast]   Refinement passes [——●——] 3
+    private var settingsRow: some View {
+        HStack(spacing: 0) {
+            Text("Quality")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textDim)
+                .frame(width: 54, alignment: .leading)
+            QualityToggle(quality: Bindable(manager).quality)
+                .frame(width: 124)
+            Spacer().frame(width: 28)
+            Text("Refinement passes")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Theme.textDim)
+                .frame(width: 118, alignment: .leading)
+            PassesSlider(value: Bindable(manager).passes)
+                .padding(.horizontal, 6)
+            Text("\(manager.passes)")
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Theme.text)
+                .frame(width: 18, alignment: .trailing)
+        }
+        .disabled(manager.phase.isActive)
     }
 
     @ViewBuilder private var stemsArea: some View {
@@ -254,10 +279,8 @@ struct ContentView: View {
         case .idle:
             if manager.input == nil {
                 ""
-            } else if let estimates = manager.estimates {
-                manager.quality == .best
-                    ? "Best takes \(aboutDuration(estimates.best)) (cleanest split)"
-                    : "Fast takes \(aboutDuration(estimates.fast))"
+            } else if let seconds = manager.estimatedSeconds {
+                "\(manager.quality == .best ? "Best" : "Fast"), \(manager.passes) \(manager.passes == 1 ? "pass" : "passes"): \(aboutDuration(seconds))"
             } else {
                 "Estimating time…"
             }

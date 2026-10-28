@@ -279,6 +279,136 @@ void SegmentedToggle::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+PassSlider::PassSlider (int minIn, int maxIn) : minValue (minIn), maxValue (maxIn), value (minIn)
+{
+    thumb = (float) value;
+    settle.snap (thumb);
+    setWantsKeyboardFocus (true);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setTitle ("Refinement passes");
+}
+
+void PassSlider::setValue (int newValue, bool animate)
+{
+    value = juce::jlimit (minValue, maxValue, newValue);
+    if (animate && ! prefersReducedMotion())
+        settle.animateTo ((float) value, motion::release);
+    else
+        settle.snap ((float) value);
+    thumb = settle.value;
+    setDescription (juce::String (value));
+    repaint();
+}
+
+float PassSlider::xFor (float position) const
+{
+    const auto inset = 9.0f;
+    const auto span = (float) getWidth() - 2.0f * inset;
+    return inset + span * (position - (float) minValue) / (float) (maxValue - minValue);
+}
+
+float PassSlider::positionAt (float x) const
+{
+    const auto inset = 9.0f;
+    const auto span = juce::jmax (1.0f, (float) getWidth() - 2.0f * inset);
+    return juce::jlimit ((float) minValue, (float) maxValue,
+                         (float) minValue + (x - inset) / span * (float) (maxValue - minValue));
+}
+
+void PassSlider::dragTo (float x)
+{
+    // While dragging the thumb is attached to the pointer: no easing, no lag.
+    thumb = positionAt (x);
+    settle.snap (thumb);
+    const auto nearest = juce::roundToInt (thumb);
+    if (nearest != value)
+    {
+        value = nearest;
+        setDescription (juce::String (value));
+        if (onChange)
+            onChange (value);
+    }
+    repaint();
+}
+
+void PassSlider::mouseDown (const juce::MouseEvent& e)
+{
+    if (! isEnabled())
+        return;
+    dragging = true;
+    grow.animateTo (1.0f, motion::press);
+    dragTo (e.position.x);
+}
+
+void PassSlider::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragging)
+        dragTo (e.position.x);
+}
+
+void PassSlider::mouseUp (const juce::MouseEvent&)
+{
+    if (! dragging)
+        return;
+    dragging = false;
+    grow.animateTo (0.0f, motion::release);
+    // Release: settle onto the tick.
+    settle.animateTo ((float) value, prefersReducedMotion() ? 1.0 : motion::release);
+}
+
+void PassSlider::mouseEnter (const juce::MouseEvent&) { if (isEnabled()) hover.animateTo (1.0f, motion::hover); }
+void PassSlider::mouseExit (const juce::MouseEvent&)  { hover.animateTo (0.0f, motion::hoverOut); }
+
+bool PassSlider::keyPressed (const juce::KeyPress& key)
+{
+    const auto step = key == juce::KeyPress::rightKey || key == juce::KeyPress::upKey     ? 1
+                    : key == juce::KeyPress::leftKey  || key == juce::KeyPress::downKey   ? -1
+                                                                                          : 0;
+    if (step == 0 || ! isEnabled())
+        return false;
+    const auto before = value;
+    setValue (value + step, false); // keyboard: instant
+    if (value != before && onChange)
+        onChange (value);
+    return true;
+}
+
+void PassSlider::tick()
+{
+    const auto now = nowMs();
+    const bool a = settle.tick (now), b = grow.tick (now), c = hover.tick (now);
+    if (a && ! dragging)
+        thumb = settle.value;
+    if (a || b || c)
+        repaint();
+}
+
+void PassSlider::paint (juce::Graphics& g)
+{
+    const float alpha = isEnabled() ? 1.0f : 0.45f;
+    const auto cy = (float) getHeight() * 0.5f;
+    const auto x0 = xFor ((float) minValue), x1 = xFor ((float) maxValue), xt = xFor (thumb);
+
+    g.setColour (colours::surfaceHi.withMultipliedAlpha (alpha));
+    g.fillRoundedRectangle (x0, cy - 2.0f, x1 - x0, 4.0f, 2.0f);
+    g.setColour (colours::text.withAlpha (0.85f * alpha));
+    g.fillRoundedRectangle (x0, cy - 2.0f, juce::jmax (0.0f, xt - x0), 4.0f, 2.0f);
+
+    for (int v = minValue; v <= maxValue; ++v)
+    {
+        const auto x = xFor ((float) v);
+        g.setColour ((v <= value ? colours::text : colours::textDim).withAlpha (0.9f * alpha));
+        g.fillEllipse (x - 1.5f, cy + 6.0f, 3.0f, 3.0f);
+    }
+
+    const auto radius = 7.0f + (prefersReducedMotion() ? 0.0f : 1.5f * grow.value);
+    g.setColour (colours::text.interpolatedWith (juce::Colours::white, hover.value).withMultipliedAlpha (alpha));
+    g.fillEllipse (xt - radius, cy - radius, radius * 2.0f, radius * 2.0f);
+    g.setColour (colours::background.withAlpha (0.25f * alpha));
+    g.drawEllipse (xt - radius, cy - radius, radius * 2.0f, radius * 2.0f, 1.0f);
+}
+
+//==============================================================================
 void ProgressStrip::setState (Mode newMode, float fraction, const juce::String& newLabel, const juce::String& newDetail)
 {
     // A new run starts from zero; otherwise progress only ever moves forward.

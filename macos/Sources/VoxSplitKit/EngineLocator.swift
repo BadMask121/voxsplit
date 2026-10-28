@@ -16,13 +16,14 @@ public struct EngineLocation: Sendable, Equatable {
     }
 
     /// argv for `separate`, one `--flag=value` element per option.
-    public func separateArguments(input: URL, outputFolder: URL, quality: Quality) -> [String] {
+    public func separateArguments(input: URL, outputFolder: URL, quality: Quality, passes: Int) -> [String] {
         [
             "separate",
             "--input=\(input.path(percentEncoded: false))",
             "--out-dir=\(outputFolder.path(percentEncoded: false))",
             "--models-dir=\(modelsDir.path(percentEncoded: false))",
             "--quality=\(quality.rawValue)",
+            "--passes=\(min(max(passes, 1), 5))",
         ]
     }
 

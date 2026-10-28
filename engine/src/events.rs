@@ -93,10 +93,13 @@ pub enum Event<'a> {
         /// Expected seconds until done.
         eta_sec: f64,
     },
+    /// Expected seconds per quality with one karaoke pass, and per extra pass.
     Estimate {
         duration_sec: f64,
         best_sec: f64,
+        best_pass_sec: f64,
         fast_sec: f64,
+        fast_pass_sec: f64,
     },
     Log {
         level: Level,
@@ -164,11 +167,15 @@ fn clamp<'a>(event: &'a Event<'a>) -> Event<'a> {
         Event::Estimate {
             duration_sec,
             best_sec,
+            best_pass_sec,
             fast_sec,
+            fast_pass_sec,
         } => Event::Estimate {
             duration_sec: secs(duration_sec),
             best_sec: secs(best_sec),
+            best_pass_sec: secs(best_pass_sec),
             fast_sec: secs(fast_sec),
+            fast_pass_sec: secs(fast_pass_sec),
         },
         Event::Probe {
             version,

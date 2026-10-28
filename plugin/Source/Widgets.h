@@ -74,6 +74,40 @@ private:
     juce::VBlankAttachment vblank { this, [this] { tick(); } };
 };
 
+/** A discrete slider (e.g. 1-5). The thumb follows the pointer while dragging and
+    snaps to the nearest tick on release; arrow keys step instantly. */
+class PassSlider final : public juce::Component
+{
+public:
+    PassSlider (int minValue, int maxValue);
+
+    std::function<void (int)> onChange;
+
+    void setValue (int value, bool animate);
+    int getValue() const noexcept { return value; }
+
+private:
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+    void enablementChanged() override { repaint(); }
+
+    float xFor (float position) const;
+    float positionAt (float x) const;
+    void dragTo (float x);
+    void tick();
+
+    int minValue, maxValue, value;
+    float thumb = 0.0f; // continuous position in value units
+    bool dragging = false;
+    Tween settle, grow, hover;
+    juce::VBlankAttachment vblank { this, [this] { tick(); } };
+};
+
 /** Overall progress with a smoothed, linear-feeling fill and an indeterminate mode. */
 class ProgressStrip final : public juce::Component
 {

@@ -6,7 +6,7 @@ using Phase = SeparationJob::Phase;
 namespace
 {
     constexpr int width = 540;
-    constexpr int baseHeight = 510;
+    constexpr int baseHeight = 558;
     constexpr int logHeight = 150;
 
     juce::String percent (float f) { return juce::String (juce::roundToInt (f * 100.0f)) + "%"; }
@@ -60,6 +60,15 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     quality.setSelected (processor.getQuality() == SeparationJob::Quality::fast ? 1 : 0, false);
     quality.onChange = [this] (int index) {
         processor.setQuality (index == 1 ? SeparationJob::Quality::fast : SeparationJob::Quality::best);
+        // Each quality remembers its own pass count.
+        passes.setValue (processor.getPasses (processor.getQuality()), true);
+        sync (false);
+    };
+
+    addAndMakeVisible (passes);
+    passes.setValue (processor.getPasses (processor.getQuality()), false);
+    passes.onChange = [this] (int n) {
+        processor.setPasses (processor.getQuality(), n);
         sync (false);
     };
 
@@ -126,7 +135,8 @@ void VoxSplitEditor::primaryClicked()
 
     preview.stop(); // the stems being previewed are about to be replaced
     rows.clear();
-    job.start (input, SeparationJob::defaultOutputFolder (input), processor.getQuality());
+    job.start (input, SeparationJob::defaultOutputFolder (input), processor.getQuality(),
+               processor.getPasses (processor.getQuality()));
 }
 
 void VoxSplitEditor::toggleLog()
@@ -193,6 +203,7 @@ void VoxSplitEditor::sync (bool initial)
 
     dropZone.setEnabled (! active);
     quality.setEnabled (! active);
+    passes.setEnabled (! active);
     primary.setEnabled (active || hasInput);
     primary.setLabel (active ? "Cancel" : (s.phase == Phase::failed ? "Try again" : "Separate"));
     primary.setStyle (active ? PressableButton::Style::ghost : PressableButton::Style::primary);
@@ -306,12 +317,21 @@ void VoxSplitEditor::resized()
     area.removeFromTop (16);
 
     dropZone.setBounds (area.removeFromTop (150));
-    area.removeFromTop (16);
+    area.removeFromTop (14);
+
+    // Settings: Quality [Best|Fast]   Refinement passes [——●——] 3
+    auto settings = area.removeFromTop (32);
+    qualityLabelArea = settings.removeFromLeft (54);
+    quality.setBounds (settings.removeFromLeft (124));
+    settings.removeFromLeft (28);
+    passesLabelArea = settings.removeFromLeft (118);
+    passesValueArea = settings.removeFromRight (18);
+    passes.setBounds (settings.reduced (6, 0));
+    area.removeFromTop (14);
 
     auto actions = area.removeFromTop (36);
     primary.setBounds (actions.removeFromLeft (128));
-    quality.setBounds (actions.removeFromRight (124).reduced (0, 2));
-    statusArea = actions.withTrimmedLeft (16).withTrimmedRight (12);
+    statusArea = actions.withTrimmedLeft (16);
     area.removeFromTop (20);
 
     progress.setBounds (area.removeFromTop (26));
@@ -359,6 +379,15 @@ void VoxSplitEditor::paint (juce::Graphics& g)
     g.setColour (colours::text);
     g.setFont (chipFont);
     g.drawText (chipText, chip.withTrimmedLeft (22.0f).withTrimmedRight (8.0f), juce::Justification::centredLeft);
+
+    // Settings labels.
+    g.setFont (font (12.5f));
+    g.setColour (colours::textDim);
+    g.drawText ("Quality", qualityLabelArea, juce::Justification::centredLeft);
+    g.drawText ("Refinement passes", passesLabelArea, juce::Justification::centredLeft);
+    g.setColour (colours::text.withAlpha (passes.isEnabled() ? 1.0f : 0.45f));
+    g.setFont (font (13.0f, true));
+    g.drawText (juce::String (passes.getValue()), passesValueArea, juce::Justification::centredRight);
 
     // Status next to the primary button.
     const auto statusFont = font (12.5f);

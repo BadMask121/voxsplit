@@ -72,6 +72,8 @@ void VoxSplitProcessor::getStateInformation (juce::MemoryBlock& dest)
     juce::ValueTree state ("VoxSplit");
     state.setProperty ("input", getInputFile().getFullPathName(), nullptr);
     state.setProperty ("quality", getQuality() == SeparationJob::Quality::fast ? "fast" : "best", nullptr);
+    state.setProperty ("passesBest", getPasses (SeparationJob::Quality::best), nullptr);
+    state.setProperty ("passesFast", getPasses (SeparationJob::Quality::fast), nullptr);
 
     const auto snap = job.snapshot();
     if (snap.phase == SeparationJob::Phase::finished)
@@ -102,6 +104,8 @@ void VoxSplitProcessor::setStateInformation (const void* data, int sizeInBytes)
     setInputFile (input);
     setQuality (state.getProperty ("quality").toString() == "fast" ? SeparationJob::Quality::fast
                                                                    : SeparationJob::Quality::best);
+    setPasses (SeparationJob::Quality::best, (int) state.getProperty ("passesBest", 1));
+    setPasses (SeparationJob::Quality::fast, (int) state.getProperty ("passesFast", 3));
 
     juce::Array<SeparationJob::Output> outputs;
     for (const auto& o : state)

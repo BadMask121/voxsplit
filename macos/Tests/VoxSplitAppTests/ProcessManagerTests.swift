@@ -54,12 +54,14 @@ struct ProcessManagerTests {
         }
         let estimates = try #require(manager.estimates)
         #expect(estimates.best > estimates.fast && estimates.fast > 0)
+        #expect(estimates.total(.fast, passes: 3) > estimates.total(.fast, passes: 1), "extra passes add time")
     }
 
     @Test func `a run reports live progress, then two stems`() async throws {
         defer { cleanUp() }
         let manager = ProcessManager()
         manager.quality = .fast
+        manager.passes = 1
         manager.choose(input)
         manager.start()
         #expect(manager.phase == .preparing)
@@ -79,6 +81,20 @@ struct ProcessManagerTests {
         #expect(manager.device != nil)
         #expect(Set(manager.stems.map(\.kind)) == [.lead, .backing])
         #expect((manager.elapsed ?? 0) > 0)
+    }
+
+    @Test func `passes are remembered per quality`() {
+        let manager = ProcessManager()
+        manager.quality = .best
+        manager.passes = 2
+        manager.quality = .fast
+        manager.passes = 4
+        manager.quality = .best
+        #expect(manager.passes == 2)
+        manager.quality = .fast
+        #expect(manager.passes == 4)
+        manager.passes = 9
+        #expect(manager.passes == 5, "clamped to 1...5")
     }
 
     @Test func `cancel ends in cancelled with no stems`() async throws {

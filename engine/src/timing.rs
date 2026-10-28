@@ -19,15 +19,17 @@ pub struct Timing {
 
 impl Timing {
     /// Seconds for one pass of `cfg` over `samples` samples at its sample rate.
+    /// `chunk_sec` is per model call; `runs` is calls per chunk (2 when denoising).
     pub fn stage_sec(
         &self,
         cfg: &ModelConfig,
         samples: usize,
         overlap: f32,
+        runs: f64,
         with_load: bool,
     ) -> f64 {
         let chunks = chunk_count(cfg, samples, overlap) as f64;
-        (if with_load { self.load_sec } else { 0.0 }) + chunks * self.chunk_sec
+        (if with_load { self.load_sec } else { 0.0 }) + chunks * runs * self.chunk_sec
     }
 }
 
@@ -169,9 +171,11 @@ mod tests {
             load_sec: 2.0,
             chunk_sec: 0.5,
         };
-        let short = t.stage_sec(&cfg(), 44_100 * 10, 0.5, true);
-        let long = t.stage_sec(&cfg(), 44_100 * 100, 0.5, true);
+        let short = t.stage_sec(&cfg(), 44_100 * 10, 0.5, 1.0, true);
+        let long = t.stage_sec(&cfg(), 44_100 * 100, 0.5, 1.0, true);
         assert!(long > short * 5.0);
-        assert!((t.stage_sec(&cfg(), 44_100 * 10, 0.5, false) - (short - 2.0)).abs() < 1e-9);
+        assert!((t.stage_sec(&cfg(), 44_100 * 10, 0.5, 1.0, false) - (short - 2.0)).abs() < 1e-9);
+        let denoised = t.stage_sec(&cfg(), 44_100 * 10, 0.5, 2.0, false);
+        assert!((denoised - 2.0 * (short - 2.0)).abs() < 1e-9);
     }
 }

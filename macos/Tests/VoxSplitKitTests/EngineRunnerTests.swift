@@ -55,7 +55,7 @@ struct EngineRunnerTests {
         let recorder = Recorder()
 
         let status = try await EngineRunner(executable: repoEngine.engine)
-            .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast)) { recorder.record($0) }
+            .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast, passes: 1)) { recorder.record($0) }
 
         #expect(status == 0)
         let events = recorder.events
@@ -75,7 +75,7 @@ struct EngineRunnerTests {
 
         let run = Task {
             try await EngineRunner(executable: repoEngine.engine)
-                .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast)) { recorder.record($0) }
+                .run(arguments: repoEngine.separateArguments(input: input, outputFolder: out, quality: .fast, passes: 1)) { recorder.record($0) }
         }
         // Wait until inference is underway, then cancel.
         for _ in 0..<600 where !recorder.events.contains(where: { if case .progress = $0 { true } else { false } }) {
@@ -98,7 +98,7 @@ struct EngineRunnerTests {
             .run(arguments: repoEngine.estimateArguments(input: input)) { recorder.record($0) }
         #expect(status == 0)
         let estimate = recorder.events.compactMap {
-            if case .estimate(let duration, let best, let fast) = $0 { (duration, best, fast) } else { nil }
+            if case .estimate(let duration, let best, _, let fast, _) = $0 { (duration, best, fast) } else { nil }
         }.first
         let (duration, best, fast) = try #require(estimate)
         #expect(abs(duration - 20) < 0.1)

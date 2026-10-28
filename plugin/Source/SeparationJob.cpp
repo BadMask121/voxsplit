@@ -56,6 +56,8 @@ void SeparationJob::requestEstimate (const juce::File& input, std::shared_ptr<Es
             const auto json = juce::JSON::parse (line);
             if (json.getProperty ("event", {}).toString() == "estimate" && into->version == ticket)
             {
+                into->bestPassSec = (double) json.getProperty ("best_pass_sec", 0.0);
+                into->fastPassSec = (double) json.getProperty ("fast_pass_sec", 0.0);
                 into->bestSec = (double) json.getProperty ("best_sec", -1.0);
                 into->fastSec = (double) json.getProperty ("fast_sec", -1.0);
                 ++into->version;
@@ -70,7 +72,7 @@ bool SeparationJob::isActive() const
 }
 
 bool SeparationJob::start (const juce::File& input, const juce::File& outputFolder, Quality quality,
-                           const EngineLocation& loc)
+                           int passes, const EngineLocation& loc)
 {
     if (isThreadRunning())
         return false;
@@ -101,6 +103,7 @@ bool SeparationJob::start (const juce::File& input, const juce::File& outputFold
     args.add ("--out-dir=" + outDir.getFullPathName());
     args.add ("--models-dir=" + loc.modelsDir.getFullPathName());
     args.add (quality == Quality::best ? "--quality=best" : "--quality=fast");
+    args.add ("--passes=" + juce::String (juce::jlimit (1, 5, passes)));
 
     cancelRequested = false;
     sawDone = sawCancelled = false;
