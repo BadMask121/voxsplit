@@ -3,6 +3,7 @@
     <title>VoxSplit</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
+    <!-- Everything always installs, the FL Studio plugin included: no Customize step. -->
     <options customize="never" require-scripts="false" rootVolumeOnly="true" hostArchitectures="arm64"/>
     <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
     <volume-check>
@@ -11,13 +12,29 @@
         </allowed-os-versions>
     </volume-check>
     <choices-outline>
-        <line choice="default">
-            <line choice="com.voxsplit.pkg"/>
-        </line>
+        <line choice="app"/>
+        <line choice="plugin"/>
+        <line choice="cli"/>
+        <line choice="core"/>
     </choices-outline>
-    <choice id="default"/>
-    <choice id="com.voxsplit.pkg" visible="false">
-        <pkg-ref id="com.voxsplit.pkg"/>
+    <choice id="app" visible="false" enabled="false" selected="true" title="VoxSplit app"
+            description="The VoxSplit app in your Applications folder.">
+        <pkg-ref id="com.voxsplit.pkg.app"/>
     </choice>
-    <pkg-ref id="com.voxsplit.pkg" version="__VERSION__" onConclusion="none">VoxSplit-component.pkg</pkg-ref>
+    <choice id="plugin" visible="false" enabled="false" selected="true" title="FL Studio plugin (VST3 + AU)"
+            description="Use VoxSplit inside FL Studio and other music apps. Installs the VST3 and Audio Unit plugins.">
+        <pkg-ref id="com.voxsplit.pkg.plugin"/>
+    </choice>
+    <choice id="cli" visible="false" enabled="false" selected="true" title="Terminal command"
+            description="The voxsplit command, for separating songs from Terminal.">
+        <pkg-ref id="com.voxsplit.pkg.cli"/>
+    </choice>
+    <choice id="core" visible="false" enabled="false" selected="true" title="Sound engine"
+            description="The engine and AI models that do the separating (about 330 MB). Everything above needs it.">
+        <pkg-ref id="com.voxsplit.pkg.core"/>
+    </choice>
+    <pkg-ref id="com.voxsplit.pkg.core" version="__VERSION__" onConclusion="none">VoxSplit-core.pkg</pkg-ref>
+    <pkg-ref id="com.voxsplit.pkg.app" version="__VERSION__" onConclusion="none">VoxSplit-app.pkg</pkg-ref>
+    <pkg-ref id="com.voxsplit.pkg.plugin" version="__VERSION__" onConclusion="none">VoxSplit-plugin.pkg</pkg-ref>
+    <pkg-ref id="com.voxsplit.pkg.cli" version="__VERSION__" onConclusion="none">VoxSplit-cli.pkg</pkg-ref>
 </installer-gui-script>

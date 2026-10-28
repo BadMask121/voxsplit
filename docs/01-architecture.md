@@ -148,7 +148,10 @@ download. Device selection in the engine is already `cfg`-gated for both.
 ### The installer (`scripts/build-pkg.sh`)
 
 The downloadable `VoxSplit-<version>.pkg` doesn't embed the engine and models in
-each bundle (that would ship ~1 GB). It installs one shared copy instead:
+each bundle (that would ship ~1 GB). It installs one shared copy instead. It is
+built from four component packages (`com.voxsplit.pkg.{core,app,plugin,cli}`),
+but everything always installs: no Customize step, so the FL Studio plugin is
+never left out.
 
 ```
 /Applications/VoxSplit.app                              (no Helpers/, no models)

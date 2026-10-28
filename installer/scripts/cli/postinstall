@@ -1,0 +1,7 @@
+#!/bin/bash
+# Runs as root. The `voxsplit` command is a link made here rather than a file in a
+# payload, so the installer never takes ownership of /usr/local (Homebrew lives
+# there on some Macs).
+mkdir -p /usr/local/bin
+ln -sfn "/Library/Application Support/VoxSplit/voxsplit-engine" /usr/local/bin/voxsplit
+exit 0
