@@ -124,8 +124,8 @@ struct ContentView: View {
         }
     }
 
-    /// The quality toggle, then one slider per model. The karaoke model the
-    /// current quality doesn't use stays adjustable but fades back.
+    /// Quality, then two sliders: how many times vocal extraction runs, and how
+    /// many times the lead/backing model (whichever the quality uses) runs.
     private var settingsBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 0) {
@@ -136,14 +136,11 @@ struct ContentView: View {
                 QualityToggle(quality: Bindable(manager).quality)
                     .frame(width: 124, height: 32)
             }
-            ModelPassesRow(name: "Kim Vocal 2", role: "vocals · 0 = file is vocals", range: 0...5, active: true,
-                           value: Binding(get: { manager.vocalPasses }, set: { manager.vocalPasses = $0 }))
-            ModelPassesRow(name: "BS-RoFormer", role: "lead/backing · Best", range: 1...5,
-                           active: manager.quality == .best,
-                           value: Binding(get: { manager.passes(for: .best) }, set: { manager.setPasses($0, for: .best) }))
-            ModelPassesRow(name: "MDX Karaoke 2", role: "lead/backing · Fast", range: 1...5,
-                           active: manager.quality == .fast,
-                           value: Binding(get: { manager.passes(for: .fast) }, set: { manager.setPasses($0, for: .fast) }))
+            PassesRow(name: "Vocal passes", caption: "Kim Vocal 2 · 0 = file is vocals", range: 0...5,
+                      value: Bindable(manager).vocalPasses)
+            PassesRow(name: "Refinement passes",
+                      caption: manager.quality == .best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)",
+                      range: 1...5, value: Bindable(manager).passes)
         }
         .disabled(manager.phase.isActive)
     }

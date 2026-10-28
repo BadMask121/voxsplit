@@ -6,7 +6,7 @@ using Phase = SeparationJob::Phase;
 namespace
 {
     constexpr int width = 540;
-    constexpr int baseHeight = 650;
+    constexpr int baseHeight = 610;
     constexpr int logHeight = 150;
 
     juce::String percent (float f) { return juce::String (juce::roundToInt (f * 100.0f)) + "%"; }
@@ -60,25 +60,19 @@ VoxSplitEditor::VoxSplitEditor (VoxSplitProcessor& p)
     quality.setSelected (processor.getQuality() == SeparationJob::Quality::fast ? 1 : 0, false);
     quality.onChange = [this] (int index) {
         processor.setQuality (index == 1 ? SeparationJob::Quality::fast : SeparationJob::Quality::best);
-        updateActiveRows (true);
+        showQualityPasses (true);
         sync (false);
     };
 
-    // One slider per model. The karaoke model that the current quality doesn't
-    // use stays adjustable but fades back.
-    using Q = SeparationJob::Quality;
-    kimRow.slider.setValue (processor.getVocalPasses(), false);
-    kimRow.slider.onChange = [this] (int n) { processor.setVocalPasses (n); sync (false); };
-    roformerRow.slider.setValue (processor.getPasses (Q::best), false);
-    roformerRow.slider.onChange = [this] (int n) { processor.setPasses (Q::best, n); sync (false); };
-    mdxRow.slider.setValue (processor.getPasses (Q::fast), false);
-    mdxRow.slider.onChange = [this] (int n) { processor.setPasses (Q::fast, n); sync (false); };
-    for (auto* row : modelRows)
+    vocalRow.slider.setValue (processor.getVocalPasses(), false);
+    vocalRow.slider.onChange = [this] (int n) { processor.setVocalPasses (n); sync (false); };
+    refineRow.slider.onChange = [this] (int n) { processor.setPasses (processor.getQuality(), n); sync (false); };
+    for (auto* row : passRows)
     {
-        row->slider.setTitle (row->name + " passes");
+        row->slider.setTitle (row->name);
         addAndMakeVisible (row->slider);
     }
-    updateActiveRows (false);
+    showQualityPasses (false);
 
     addAndMakeVisible (progress);
     progress.setAlpha (0.0f);
@@ -107,20 +101,11 @@ VoxSplitEditor::~VoxSplitEditor()
     preview.stop();
 }
 
-void VoxSplitEditor::updateActiveRows (bool animate)
+void VoxSplitEditor::showQualityPasses (bool animate)
 {
-    const bool best = processor.getQuality() == SeparationJob::Quality::best;
-    const std::array<bool, 3> active { true, best, ! best };
-    for (size_t i = 0; i < modelRows.size(); ++i)
-    {
-        auto& row = *modelRows[i];
-        const float target = active[i] ? 1.0f : 0.0f;
-        if (animate)
-            row.active.animateTo (target, active[i] ? motion::fade : motion::hoverOut);
-        else
-            row.active.snap (target);
-        row.slider.setAlpha (0.45f + 0.55f * row.active.value);
-    }
+    const auto q = processor.getQuality();
+    refineRow.caption = q == SeparationJob::Quality::best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)";
+    refineRow.slider.setValue (processor.getPasses (q), animate);
     repaint();
 }
 
@@ -208,19 +193,8 @@ void VoxSplitEditor::tick()
     if (job.version() != seenVersion || processor.getEstimate()->version != seenEstimate)
         sync (false);
 
-    const auto now = nowMs();
-    if (progressAlpha.tick (now))
+    if (progressAlpha.tick (nowMs()))
         progress.setAlpha (progressAlpha.value);
-
-    bool rowsMoved = false;
-    for (auto* row : modelRows)
-        if (row->active.tick (now))
-        {
-            row->slider.setAlpha (0.45f + 0.55f * row->active.value);
-            rowsMoved = true;
-        }
-    if (rowsMoved)
-        repaint();
 
     const bool playing = preview.isPlaying();
     const auto playingFile = preview.getFile();
@@ -239,7 +213,7 @@ void VoxSplitEditor::sync (bool initial)
 
     dropZone.setEnabled (! active);
     quality.setEnabled (! active);
-    for (auto* row : modelRows)
+    for (auto* row : passRows)
         row->slider.setEnabled (! active);
     primary.setEnabled (active || hasInput);
     primary.setLabel (active ? "Cancel" : (s.phase == Phase::failed ? "Try again" : "Separate"));
@@ -362,7 +336,7 @@ void VoxSplitEditor::resized()
     auto qualityRow = area.removeFromTop (32);
     qualityLabelArea = qualityRow.removeFromLeft (labelWidth);
     quality.setBounds (qualityRow.removeFromLeft (124));
-    for (auto* row : modelRows)
+    for (auto* row : passRows)
     {
         area.removeFromTop (6);
         auto r = area.removeFromTop (34);
@@ -423,20 +397,20 @@ void VoxSplitEditor::paint (juce::Graphics& g)
     g.setFont (chipFont);
     g.drawText (chipText, chip.withTrimmedLeft (22.0f).withTrimmedRight (8.0f), juce::Justification::centredLeft);
 
-    // Settings labels: "Quality", then each model's name, role and pass count.
+    // Settings labels: "Quality", then each slider's name, caption and value.
     g.setFont (font (12.5f));
     g.setColour (colours::textDim);
     g.drawText ("Quality", qualityLabelArea, juce::Justification::centredLeft);
-    for (auto* row : modelRows)
+    for (auto* row : passRows)
     {
-        const float alpha = (row->slider.isEnabled() ? 1.0f : 0.45f) * (0.45f + 0.55f * row->active.value);
+        const float alpha = row->slider.isEnabled() ? 1.0f : 0.45f;
         auto label = row->label;
         g.setColour (colours::text.withAlpha (alpha));
         g.setFont (font (12.5f, true));
         g.drawText (row->name, label.removeFromTop (label.getHeight() / 2 + 1), juce::Justification::bottomLeft);
         g.setColour (colours::textDim.withAlpha (alpha));
         g.setFont (font (10.5f));
-        g.drawText (juce::String::fromUTF8 (row->role), label, juce::Justification::topLeft);
+        g.drawText (row->caption, label, juce::Justification::topLeft);
         g.setColour (colours::text.withAlpha (alpha));
         g.setFont (font (13.0f, true));
         g.drawText (juce::String (row->slider.getValue()), row->value, juce::Justification::centredRight);

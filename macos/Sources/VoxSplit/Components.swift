@@ -191,6 +191,8 @@ struct PassesSlider: View {
                     .animation(.easeOut(duration: dragPosition != nil ? Theme.press : Theme.release), value: dragPosition != nil)
             }
             .contentShape(Rectangle())
+            // A value set from outside (switching quality) glides; dragging doesn't animate.
+            .animation(dragPosition == nil ? Theme.easeOut(Theme.fade) : nil, value: value)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { drag in
@@ -228,17 +230,20 @@ struct PassesSlider: View {
 
     private func step(_ delta: Int) -> KeyPress.Result {
         guard isEnabled else { return .ignored }
-        value = min(max(value + delta, range.lowerBound), range.upperBound) // keyboard: instant
+        var instant = Transaction()
+        instant.disablesAnimations = true // keyboard: no animation
+        withTransaction(instant) {
+            value = min(max(value + delta, range.lowerBound), range.upperBound)
+        }
         return .handled
     }
 }
 
-/// One model's pass count: name and role on the left, slider, value on the right.
-struct ModelPassesRow: View {
+/// A pass count: name and caption on the left, slider, value on the right.
+struct PassesRow: View {
     let name: String
-    let role: String
+    let caption: String
     let range: ClosedRange<Int>
-    let active: Bool
     @Binding var value: Int
 
     var body: some View {
@@ -247,9 +252,11 @@ struct ModelPassesRow: View {
                 Text(name)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.text)
-                Text(role)
+                Text(caption)
                     .font(.system(size: 10.5))
                     .foregroundStyle(Theme.textDim)
+                    .contentTransition(.opacity)
+                    .animation(Theme.easeOut(Theme.fade), value: caption)
             }
             .frame(width: 150, alignment: .leading)
             PassesSlider(value: $value, range: range)
@@ -261,10 +268,8 @@ struct ModelPassesRow: View {
                 .frame(width: 18, alignment: .trailing)
         }
         .frame(height: 34)
-        .opacity(active ? 1 : 0.45)
-        .animation(.easeOut(duration: active ? Theme.fade : Theme.hoverOut), value: active)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(name), \(role)")
+        .accessibilityLabel("\(name), \(caption)")
     }
 }
 

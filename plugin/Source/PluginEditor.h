@@ -41,20 +41,20 @@ private:
     vox::PressableButton logToggle { "Show log", vox::PressableButton::Style::link };
     vox::SegmentedToggle quality { { "Best", "Fast" } };
 
-    /** One slider per model: name, role, slider, and where its label/value draw. */
-    struct ModelRow
+    /** A pass-count slider: label, caption, slider, and where its text draws. */
+    struct PassRow
     {
-        juce::String name;
-        const char* role; // UTF-8
+        juce::String name, caption;
         vox::PassSlider slider;
         juce::Rectangle<int> label, value;
-        vox::Tween active;
     };
-    ModelRow kimRow { "Kim Vocal 2", "vocals \xc2\xb7 0 = file is vocals", { 0, 5 }, {}, {}, {} };
-    ModelRow roformerRow { "BS-RoFormer", "lead/backing \xc2\xb7 Best", { 1, 5 }, {}, {}, {} };
-    ModelRow mdxRow { "MDX Karaoke 2", "lead/backing \xc2\xb7 Fast", { 1, 5 }, {}, {}, {} };
-    std::array<ModelRow*, 3> modelRows { &kimRow, &roformerRow, &mdxRow };
-    void updateActiveRows (bool animate);
+    PassRow vocalRow { "Vocal passes", juce::String::fromUTF8 ("Kim Vocal 2 \xc2\xb7 0 = file is vocals"), { 0, 5 }, {}, {} };
+    PassRow refineRow { "Refinement passes", {}, { 1, 5 }, {}, {} };
+    std::array<PassRow*, 2> passRows { &vocalRow, &refineRow };
+
+    /** The refinement slider follows the quality: its caption names the karaoke
+        model doing the work, and it shows that quality's remembered pass count. */
+    void showQualityPasses (bool animate);
     vox::ProgressStrip progress;
     juce::OwnedArray<vox::StemRow> rows;
     juce::TextEditor console;

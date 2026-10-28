@@ -15,30 +15,23 @@ namespace
             const char* name;
             const char* role;
             vox::PassSlider slider;
-            bool active;
             juce::Rectangle<int> label, value;
         };
 
         vox::SegmentedToggle quality { { "Best", "Fast" } };
-        Row kim { "Kim Vocal 2", "vocals \xc2\xb7 0 = file is vocals", { 0, 5 }, true, {}, {} };
-        Row roformer { "BS-RoFormer", "lead/backing \xc2\xb7 Best", { 1, 5 }, true, {}, {} };
-        Row mdx { "MDX Karaoke 2", "lead/backing \xc2\xb7 Fast", { 1, 5 }, false, {}, {} };
+        Row vocal { "Vocal passes", "Kim Vocal 2 \xc2\xb7 0 = file is vocals", { 0, 5 }, {}, {} };
+        Row refine { "Refinement passes", "", { 1, 5 }, {}, {} };
         juce::Rectangle<int> qualityLabel;
 
-        Settings (bool best, int vocal, int rof, int fast)
+        Settings (bool best, int vocalPasses, int refinePasses)
         {
             addAndMakeVisible (quality);
             quality.setSelected (best ? 0 : 1, false);
-            roformer.active = best;
-            mdx.active = ! best;
-            kim.slider.setValue (vocal, false);
-            roformer.slider.setValue (rof, false);
-            mdx.slider.setValue (fast, false);
-            for (auto* r : { &kim, &roformer, &mdx })
-            {
+            refine.role = best ? "BS-RoFormer (Best)" : "MDX Karaoke 2 (Fast)";
+            vocal.slider.setValue (vocalPasses, false);
+            refine.slider.setValue (refinePasses, false);
+            for (auto* r : { &vocal, &refine })
                 addAndMakeVisible (r->slider);
-                r->slider.setAlpha (r->active ? 1.0f : 0.45f);
-            }
         }
 
         void resized() override
@@ -47,7 +40,7 @@ namespace
             auto q = area.removeFromTop (32);
             qualityLabel = q.removeFromLeft (150);
             quality.setBounds (q.removeFromLeft (124));
-            for (auto* r : { &kim, &roformer, &mdx })
+            for (auto* r : { &vocal, &refine })
             {
                 area.removeFromTop (6);
                 auto row = area.removeFromTop (34);
@@ -63,9 +56,9 @@ namespace
             g.setFont (vox::font (12.5f));
             g.setColour (vox::colours::textDim);
             g.drawText ("Quality", qualityLabel, juce::Justification::centredLeft);
-            for (auto* r : { &kim, &roformer, &mdx })
+            for (auto* r : { &vocal, &refine })
             {
-                const float alpha = r->active ? 1.0f : 0.45f;
+                const float alpha = 1.0f;
                 auto label = r->label;
                 g.setColour (vox::colours::text.withAlpha (alpha));
                 g.setFont (vox::font (12.5f, true));
@@ -83,14 +76,14 @@ namespace
 
 int renderSnapshot (const juce::File& out)
 {
-    constexpr int w = 540, h = 172;
+    constexpr int w = 540, h = 132;
     juce::Image image (juce::Image::ARGB, w * 2, h * 2 * 2, true);
     juce::Graphics g (image);
     g.addTransform (juce::AffineTransform::scale (2.0f));
     int y = 0;
     for (auto best : { true, false })
     {
-        Settings settings (best, best ? 1 : 0, 1, 3);
+        Settings settings (best, best ? 1 : 2, best ? 1 : 3);
         settings.setBounds (0, 0, w, h);
         g.saveState();
         g.setOrigin (0, y);
